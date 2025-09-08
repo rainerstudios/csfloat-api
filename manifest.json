@@ -1,77 +1,56 @@
 {
-    "manifest_version": 3,
-    "name": "CSFloat Market Checker",
-    "short_name": "CSFloat",
-    "version": "5.7.0",
-    "description": "Shows the float value, paint seed, and more of Counter-Strike (CS:GO & CS2) items on the Steam Market or Inventories",
-    "icons": {
-        "16": "icons/16.png",
-        "48": "icons/48.png",
-        "128": "icons/128.png"
-    },
-    "content_scripts": [
-        {
-            "matches": ["*://*.steamcommunity.com/market/listings/730/*"],
-            "js": ["src/lib/page_scripts/market_listing.js"],
-            "css": ["src/global.css"]
-        },
-        {
-            "matches": [
-                "*://*.steamcommunity.com/id/*/tradehistory*",
-                "*://*.steamcommunity.com/profiles/*/tradehistory*"
-            ],
-            "js": ["src/lib/page_scripts/trade_history.js"],
-            "css": ["src/global.css"]
-        },
-        {
-            "matches": ["*://*.steamcommunity.com/id/*/inventory*", "*://*.steamcommunity.com/profiles/*/inventory*"],
-            "js": ["src/lib/page_scripts/inventory.js"],
-            "css": ["src/global.css"]
-        },
-        {
-            "matches": ["*://*.steamcommunity.com/tradeoffer/*"],
-            "js": ["src/lib/page_scripts/trade_offer.js"],
-            "css": ["src/global.css"]
-        },
-        {
-            "matches": ["*://*.steamcommunity.com/*/tradeoffers/*"],
-            "js": ["src/lib/page_scripts/trade_offers.js"],
-            "css": ["src/global.css"]
-        },
-        {
-            "matches": ["*://*.steamcommunity.com/id/*", "*://*.steamcommunity.com/profiles/*"],
-            "js": ["src/lib/page_scripts/profile.js"],
-            "css": ["src/global.css"]
-        }
-    ],
-    "background": {
-        "service_worker": "src/background.js",
-        "type": "module"
-    },
-    "permissions": ["storage", "scripting", "alarms", "declarativeNetRequestWithHostAccess"],
-    "host_permissions": [
-        "*://*.steamcommunity.com/market/listings/730/*",
-        "*://*.steamcommunity.com/id/*/inventory*",
-        "*://*.steamcommunity.com/id/*/tradehistory*",
-        "*://*.steamcommunity.com/profiles/*/inventory*"
-    ],
-    "optional_host_permissions": ["*://*.steampowered.com/*"],
-    "externally_connectable": {
-        "matches": ["*://*.steamcommunity.com/*", "*://*.csfloat.com/*"]
-    },
-    "web_accessible_resources": [
-        {
-            "resources": ["src/version.txt"],
-            "matches": ["https://csfloat.com/*"]
-        }
-    ],
-    "declarative_net_request": {
-        "rule_resources": [
-            {
-                "id": "steamcommunity_ruleset",
-                "enabled": true,
-                "path": "src/steamcommunity_ruleset.json"
-            }
-        ]
+  "manifest_version": 3,
+  "name": "CS2 Float Checker - Instant Float Values",
+  "version": "1.1.1",
+  "description": "Check CS2 float values instantly on Steam Market. Get accurate float data, wear conditions, paint seeds for Counter-Strike 2 skins",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "64": "icons/icon64.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "notifications",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://steamcommunity.com/*",
+    "https://cs2floatchecker.com/*",
+    "https://api.cs2floatchecker.com/*"
+  ],
+  "background": {
+    "service_worker": "src/simpleBackground.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://steamcommunity.com/market/*",
+        "https://steamcommunity.com/id/*/inventory/*",
+        "https://steamcommunity.com/profiles/*/inventory/*",
+        "https://steamcommunity.com/tradeoffer/*",
+        "https://steamcommunity.com/id/*/tradehistory",
+        "https://steamcommunity.com/profiles/*/tradehistory"
+      ],
+      "js": ["src/simpleContent.js"],
+      "css": ["styles/main.css"],
+      "run_at": "document_idle"
     }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "64": "icons/icon64.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "styles/*", "src/floatAPI.js"],
+      "matches": ["https://steamcommunity.com/*"]
+    }
+  ]
 }

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CS2FLOAT | Float Checker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 380px;
+      min-height: 580px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+    
+    .container {
+      padding: 0;
+      position: relative;
+      min-height: 580px;
+      padding-bottom: 80px;
+    }
+    
+    .header {
+      padding: 24px 20px;
+      text-align: center;
+      background: #2d2d2d;
+      border-bottom: 1px solid #3a3a3a;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #00ff87;
+    }
+    
+    .header .subtitle {
+      font-size: 12px;
+      opacity: 0.8;
+      font-weight: 400;
+    }
+    
+    .content {
+      padding: 20px;
+    }
+    
+    .stats-card {
+      background: #2d2d2d;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      border: 1px solid #3a3a3a;
+    }
+    
+    .stats-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .stats-icon {
+      width: 20px;
+      height: 20px;
+      background: #3a3a3a;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    
+    .stat-item {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #00ff87;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      opacity: 0.7;
+      font-weight: 500;
+    }
+    
+    .settings-card {
+      background: #2d2d2d;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      border: 1px solid #3a3a3a;
+    }
+    
+    .settings-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .setting-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .toggle {
+      position: relative;
+      width: 48px;
+      height: 24px;
+      background: #3a3a3a;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: 1px solid #4a4a4a;
+    }
+    
+    .toggle.active {
+      background: #00ff87;
+    }
+    
+    .toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    
+    .toggle.active .toggle-slider {
+      transform: translateX(24px);
+    }
+    
+    .input-group {
+      margin-bottom: 16px;
+    }
+    
+    .input-label {
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      display: block;
+      opacity: 0.9;
+    }
+    
+    .input-field {
+      width: 100%;
+      padding: 12px 16px;
+      background: #3a3a3a;
+      border: 1px solid #4a4a4a;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+    
+    .input-field:focus {
+      outline: none;
+      border-color: #00ff87;
+      background: #4a4a4a;
+      box-shadow: 0 0 0 3px rgba(0, 255, 135, 0.2);
+    }
+    
+    .input-field::placeholder {
+      color: #888;
+    }
+    
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .btn {
+      padding: 14px 20px;
+      border: none;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .btn-primary {
+      background: #00ff87;
+      color: #1a1a1a;
+    }
+    
+    .btn-primary:hover {
+      background: #00e676;
+    }
+    
+    .btn-secondary {
+      background: #3a3a3a;
+      color: #e0e0e0;
+      border: 1px solid #4a4a4a;
+    }
+    
+    .btn-secondary:hover {
+      background: #4a4a4a;
+    }
+    
+    .footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 16px 20px;
+      text-align: center;
+      font-size: 11px;
+      opacity: 0.6;
+      background: #2d2d2d;
+      border-top: 1px solid #3a3a3a;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #00ff87;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+      }
+    }
+    
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 12px 16px;
+      background: rgba(0, 255, 135, 0.9);
+      color: #1a1a1a;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+    }
+    
+    .notification.show {
+      transform: translateX(0);
+    }
+    
+    .notification.warning {
+      background: rgba(255, 193, 7, 0.9);
+    }
+    
+    .notification.error {
+      background: rgba(220, 53, 69, 0.9);
+      color: white;
+    }
+    
+    .manual-result {
+      margin-top: 16px;
+      padding: 16px;
+      background: #3a3a3a;
+      border-radius: 8px;
+      border: 1px solid #4a4a4a;
+    }
+    
+    .manual-result .float-display {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .manual-result .float-value {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00ff87;
+      font-family: 'Courier New', monospace;
+    }
+    
+    .manual-result .wear-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e0e0e0;
+    }
+    
+    .manual-result .detail-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 4px 0;
+      font-size: 12px;
+    }
+    
+    .manual-result .detail-label {
+      color: #888;
+    }
+    
+    .manual-result .detail-value {
+      color: #e0e0e0;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>CS2 Float Checker</h1>
+      <p class="subtitle">Powered by CS2FloatChecker.com</p>
+    </div>
+    
+    <div class="content">
+      <div class="stats-card">
+        <div class="stats-title">
+          <div class="stats-icon">📊</div>
+          Statistics
+        </div>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-value" id="itemsChecked">0</div>
+            <div class="stat-label">Items Checked</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="cacheSize">0</div>
+            <div class="stat-label">Cache Size</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="settings-card">
+        <div class="settings-title">
+          <div class="stats-icon">⚙️</div>
+          Settings
+        </div>
+        
+        <div class="setting-item">
+          <span class="setting-label">Auto-load Floats</span>
+          <div class="toggle active" id="autoLoad">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <span class="setting-label">Show Stickers</span>
+          <div class="toggle active" id="showStickers">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <span class="setting-label">Highlight Low Floats</span>
+          <div class="toggle active" id="highlightLow">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <span class="setting-label">Highlight High Floats</span>
+          <div class="toggle active" id="highlightHigh">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="input-group">
+          <label class="input-label">Low Float Threshold</label>
+          <input type="number" class="input-field" id="lowThreshold" min="0" max="1" step="0.01" value="0.07" placeholder="0.07">
+        </div>
+        
+        <div class="input-group">
+          <label class="input-label">High Float Threshold</label>
+          <input type="number" class="input-field" id="highThreshold" min="0" max="1" step="0.01" value="0.93" placeholder="0.93">
+        </div>
+        
+        <div class="input-group">
+          <label class="input-label">Float Precision (Decimal Places)</label>
+          <input type="number" class="input-field" id="floatPrecision" min="1" max="16" step="1" value="6" placeholder="6">
+        </div>
+      </div>
+      
+      <div class="settings-card">
+        <div class="settings-title">
+          <div class="stats-icon">🔍</div>
+          Manual Float Check
+        </div>
+        
+        <div class="input-group">
+          <label class="input-label">Inspect Link</label>
+          <input type="text" class="input-field" id="manualInspect" placeholder="steam://rungame/730/...">
+        </div>
+        
+        <button class="btn btn-primary" id="checkManual">Check Float</button>
+        
+        <div id="manualResult" class="manual-result" style="display: none;">
+          <!-- Manual check results will appear here -->
+        </div>
+      </div>
+      
+      <div class="actions">
+        <button class="btn btn-primary" id="reloadFloats">🔄 Reload All Floats</button>
+        <button class="btn btn-secondary" id="clearCache">🗑️ Clear Cache</button>
+        <button class="btn btn-secondary" id="openSteam">🛒 Open Steam Market</button>
+      </div>
+    </div>
+    
+    <div class="footer">
+      <span class="status-indicator"></span>
+      CS2 Float Checker v1.1.1 | cs2floatchecker.com
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
