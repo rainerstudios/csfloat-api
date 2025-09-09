@@ -136,22 +136,29 @@ async function checkManualFloat() {
   resultElement.style.display = 'none';
   
   try {
-    // Send message to content script to fetch float data
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs[0]) {
-      throw new Error('No active tab found');
-    }
-    
-    const response = await chrome.tabs.sendMessage(tabs[0].id, {
-      action: 'checkManualFloat',
-      inspectLink: inspectLink
+    // Call API directly from popup
+    const params = new URLSearchParams({ url: inspectLink });
+    const response = await fetch(`https://api.cs2floatchecker.com/?${params}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'CS2FLOAT-Extension/1.5.0'
+      }
     });
     
-    if (response && response.success && response.data) {
-      displayManualResult(response.data);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`API request failed: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.iteminfo) {
+      const floatData = processApiResponse(data);
+      displayManualResult(floatData);
       showNotification('Float data loaded successfully!', 'success');
     } else {
-      throw new Error(response?.error || 'No float data received');
+      throw new Error('No item data received from API');
     }
   } catch (error) {
     console.error('Manual float check failed:', error);
@@ -162,6 +169,49 @@ async function checkManualFloat() {
     buttonElement.disabled = false;
     buttonElement.textContent = 'Check Float';
   }
+}
+
+function processApiResponse(data) {
+  const floatValue = data.iteminfo?.floatvalue;
+  const wear = data.iteminfo?.wear_name || getWearName(floatValue);
+  
+  return {
+    floatValue: floatValue,
+    paintSeed: data.iteminfo?.paintseed,
+    paintIndex: data.iteminfo?.paintindex,
+    defIndex: data.iteminfo?.defindex,
+    origin: data.iteminfo?.origin,
+    quality: data.iteminfo?.quality,
+    rarity: data.iteminfo?.rarity,
+    min: data.iteminfo?.min || 0,
+    max: data.iteminfo?.max || 1,
+    weaponType: data.iteminfo?.weapon_type,
+    itemName: data.iteminfo?.item_name || data.iteminfo?.full_item_name,
+    fullItemName: data.iteminfo?.full_item_name,
+    rarityName: data.iteminfo?.rarity_name,
+    qualityName: data.iteminfo?.quality_name,
+    originName: data.iteminfo?.origin_name,
+    imageUrl: data.iteminfo?.imageurl,
+    wear: wear,
+    floatRank: getFloatPercentage(floatValue, data.iteminfo?.min || 0, data.iteminfo?.max || 1).toFixed(2),
+    lowFloat: floatValue < 0.07,
+    highFloat: floatValue > 0.93,
+    isStatTrak: data.iteminfo?.quality === 9,
+    isSouvenir: data.iteminfo?.quality === 12,
+    timestamp: Date.now()
+  };
+}
+
+function getWearName(floatValue) {
+  if (floatValue < 0.07) return 'Factory New';
+  if (floatValue < 0.15) return 'Minimal Wear';
+  if (floatValue < 0.37) return 'Field-Tested';
+  if (floatValue < 0.44) return 'Well-Worn';
+  return 'Battle-Scarred';
+}
+
+function getFloatPercentage(floatValue, min = 0, max = 1) {
+  return ((floatValue - min) / (max - min)) * 100;
 }
 
 function displayManualResult(floatData) {
@@ -253,52 +303,3 @@ function saveSettings() {
   });
 }
 
-function showNotification(message) {
-  const notification = document.createElement('div');
-  notification.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #11998e;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 6px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    z-index: 1000;
-    animation: slideDown 0.3s ease-out;
-  `;
-  notification.textContent = message;
-  document.body.appendChild(notification);
-  
-  setTimeout(() => {
-    notification.style.animation = 'slideUp 0.3s ease-out';
-    setTimeout(() => notification.remove(), 300);
-  }, 2000);
-}
-
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes slideDown {
-    from {
-      transform: translateX(-50%) translateY(-100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(-50%) translateY(0);
-      opacity: 1;
-    }
-  }
-  
-  @keyframes slideUp {
-    from {
-      transform: translateX(-50%) translateY(0);
-      opacity: 1;
-    }
-    to {
-      transform: translateX(-50%) translateY(-100%);
-      opacity: 0;
-    }
-  }
-`;
-document.head.appendChild(style);

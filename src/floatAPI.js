@@ -38,7 +38,7 @@ class FloatAPI {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'CS2FLOAT-Extension/1.0.0'
+          'User-Agent': 'CS2FLOAT-Extension/1.5.0'
         },
         timeout: 10000
       });
@@ -51,7 +51,7 @@ class FloatAPI {
       const data = await response.json();
       
       const floatValue = data.iteminfo?.floatvalue;
-      const wear = this.getWearName(floatValue);
+      const wear = data.iteminfo?.wear_name || this.getWearName(floatValue);
       const wearRange = this.getWearRange(wear);
       const floatRank = this.getFloatPercentage(floatValue, data.iteminfo?.min || 0, data.iteminfo?.max || 1);
       
@@ -67,12 +67,14 @@ class FloatAPI {
         stickers: data.iteminfo?.stickers || [],
         min: data.iteminfo?.min || 0,
         max: data.iteminfo?.max || 1,
-        // Map weapon names from defindex
-        weaponType: this.getWeaponName(data.iteminfo?.defindex),
-        itemName: this.getSkinName(data.iteminfo?.paintindex),
-        rarityName: this.getRarityName(data.iteminfo?.rarity),
-        qualityName: this.getQualityName(data.iteminfo?.quality),
-        originName: this.getOriginName(data.iteminfo?.origin),
+        // Use actual names from API response
+        weaponType: data.iteminfo?.weapon_type || this.getWeaponName(data.iteminfo?.defindex),
+        itemName: data.iteminfo?.item_name || this.getSkinName(data.iteminfo?.paintindex),
+        fullItemName: data.iteminfo?.full_item_name,
+        rarityName: data.iteminfo?.rarity_name || this.getRarityName(data.iteminfo?.rarity),
+        qualityName: data.iteminfo?.quality_name || this.getQualityName(data.iteminfo?.quality),
+        originName: data.iteminfo?.origin_name || this.getOriginName(data.iteminfo?.origin),
+        imageUrl: data.iteminfo?.imageurl,
         wear: wear,
         wearRange: wearRange,
         floatRank: floatRank.toFixed(2),
@@ -402,4 +404,6 @@ class FloatAPI {
   }
 }
 
-window.FloatAPI = FloatAPI;
+// Export class and create global instance
+window.FloatAPI = new FloatAPI();
+console.log('FloatAPI initialized successfully');

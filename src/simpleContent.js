@@ -1,996 +1,886 @@
 /**
  * CS2 Float Checker - Simple Content Script
- * Focuses on core float checking functionality
+ * Enhanced Steam Community Market with float values
+ * Version 1.5.1
  */
 
-class SimpleCS2FloatChecker {
-  constructor() {
-    this.floatAPI = null;
-    this.processedItems = new Set();
-    this.settings = this.getDefaultSettings();
-    this.init();
-  }
+// CS2 Float Checker Content Script - Production Ready
 
-  getDefaultSettings() {
-    return {
-      autoLoad: true,
-      showStickers: true,
-      highlightLowFloat: true,
-      highlightHighFloat: true,
-      lowFloatThreshold: 0.07,
-      highFloatThreshold: 0.93,
-      showPaintSeed: true,
-      showFloatRank: true,
-      floatPrecision: 6
+(() => {
+    'use strict';
+    
+    const CS2FloatChecker = {
+        version: '1.5.1',
+        initialized: false,
+        floatAPI: null,
+        processedItems: new Set(),
+        settings: {},
+        currentTooltip: null,
+
+        log(...args) {
+            console.log(`[CS2 Float Checker v${this.version}]`, ...args);
+        },
+
+        setupMessageListener() {
+            this.log('Setting up message listener for injected script communication...');
+            
+            window.addEventListener('message', async (event) => {
+                // Only accept messages from same origin
+                if (event.origin !== window.location.origin) {
+                    return;
+                }
+                
+                // Check for our specific message type
+                if (event.data && event.data.type === 'CS2_FETCH_FLOAT_REQUEST') {
+                    this.log('📨 Received float request from injected script:', event.data.payload);
+                    
+                    try {
+                        // Forward request to background script via Chrome API
+                        const response = await chrome.runtime.sendMessage({
+                            action: 'fetchFloat',
+                            inspectLink: event.data.payload.inspectLink,
+                            assetId: event.data.payload.assetId
+                        });
+                        
+                        this.log('📨 Received response from background script:', response);
+                        
+                        // Send response back to injected script
+                        window.postMessage({
+                            type: 'CS2_FETCH_FLOAT_RESPONSE',
+                            payload: {
+                                ...response,
+                                assetId: event.data.payload.assetId,
+                                elementId: event.data.payload.elementId,
+                                requestId: event.data.payload.requestId
+                            }
+                        }, window.location.origin);
+                        
+                    } catch (error) {
+                        this.log('❌ Error forwarding float request:', error);
+                        
+                        // Send error response back to injected script
+                        window.postMessage({
+                            type: 'CS2_FETCH_FLOAT_RESPONSE',
+                            payload: {
+                                error: error.message,
+                                assetId: event.data.payload.assetId,
+                                elementId: event.data.payload.elementId,
+                                requestId: event.data.payload.requestId
+                            }
+                        }, window.location.origin);
+                    }
+                }
+            });
+            
+            this.log('✅ Message listener setup complete');
+        },
+
+        init() {
+            if (this.initialized) {
+                this.log('Already initialized, skipping...');
+                return;
+            }
+            
+            this.log('Initializing CS2 Float Checker...');
+            this.log('Current URL:', window.location.href);
+            this.log('Document ready state:', document.readyState);
+            
+            // Check Chrome extension context
+            this.log('Chrome available:', typeof chrome !== 'undefined');
+            this.log('Chrome runtime available:', typeof chrome !== 'undefined' && !!chrome.runtime);
+            
+            // Set up message listener for injected script communication
+            this.setupMessageListener();
+            
+            // Create fallback FloatAPI if needed
+            this.createFallbackAPI();
+            
+            if (document.readyState === 'loading') {
+                this.log('Document still loading, waiting for DOMContentLoaded...');
+                document.addEventListener('DOMContentLoaded', () => {
+                    this.log('DOMContentLoaded fired, running setup...');
+                    this.setup();
+                });
+            } else {
+                this.log('Document already ready, running setup immediately...');
+                this.setup();
+            }
+            
+            this.initialized = true;
+            this.log('Initialization complete');
+        },
+
+        createFallbackAPI() {
+            if (!window.FloatAPI) {
+                window.FloatAPI = {
+                    async getFloatData(inspectLink) {
+                        try {
+                            // Check if Chrome extension APIs are available
+                            if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+                                console.error('Chrome extension APIs not available');
+                                return null;
+                            }
+                            
+                            console.log('📤 Sending fetchFloat message for:', inspectLink);
+                            
+                            // Use Chrome extension fetch to bypass CORS
+                            const response = await chrome.runtime.sendMessage({
+                                action: 'fetchFloat',
+                                inspectLink: inspectLink
+                            });
+                            
+                            console.log('📥 Received response:', JSON.stringify(response, null, 2));
+                            return response;
+                        } catch (error) {
+                            console.error('FloatAPI fetch error:', error);
+                            return null;
+                        }
+                    }
+                };
+            }
+            this.floatAPI = window.FloatAPI;
+        },
+
+        getDefaultSettings() {
+            return {
+                autoLoad: true,
+                showStickers: true,
+                highlightLowFloat: true,
+                highlightHighFloat: true,
+                lowFloatThreshold: 0.07,
+                highFloatThreshold: 0.93,
+                showPaintSeed: true,
+                showFloatRank: true,
+                floatPrecision: 6
+            };
+        },
+
+        async setup() {
+            try {
+                this.log('Setting up extension...');
+                this.log('FloatAPI available:', !!this.floatAPI);
+                
+                await this.loadSettings();
+                this.log('Settings loaded:', this.settings);
+                
+                this.injectStyles();
+                this.log('Styles injected');
+                
+                // Start processing based on page type
+                if (this.isMarketPage()) {
+                    this.log('Market page detected - URL contains /market/');
+                    this.processMarketPage();
+                } else if (this.isInventoryPage()) {
+                    this.log('Inventory page detected - URL contains /inventory/');
+                    this.processInventoryPage();
+                } else {
+                    this.log('Unknown page type, trying generic processing');
+                    this.log('Current pathname:', window.location.pathname);
+                    this.processGenericPage();
+                }
+                
+                this.log('Extension setup completed successfully');
+            } catch (error) {
+                this.log('Error during setup:', error);
+                console.error('[CS2 Float Checker] Setup error:', error);
+            }
+        },
+
+        async loadSettings() {
+            try {
+                const result = await chrome.storage.local.get(['settings']);
+                if (result.settings) {
+                    this.settings = { ...this.getDefaultSettings(), ...result.settings };
+                } else {
+                    this.settings = this.getDefaultSettings();
+                }
+            } catch (e) {
+                this.log('Using default settings');
+                this.settings = this.getDefaultSettings();
+            }
+        },
+
+        isMarketPage() {
+            return window.location.href.includes('/market/');
+        },
+
+        isInventoryPage() {
+            const url = window.location.href;
+            const isInventory = url.includes('/inventory/') || 
+                               (url.includes('/profiles/') && url.includes('/inventory')) ||
+                               (url.includes('/id/') && url.includes('/inventory'));
+            
+            this.log('Inventory page check:', {
+                url: url,
+                isInventory: isInventory,
+                hasInventoryInUrl: url.includes('/inventory'),
+                hasProfilesInUrl: url.includes('/profiles/'),
+                hasIdInUrl: url.includes('/id/')
+            });
+            
+            return isInventory;
+        },
+
+        processMarketPage() {
+            this.log('Processing market page...');
+            
+            // Wait for page to load then process
+            setTimeout(() => {
+                // Look for market listings with more specific selectors
+                const selectors = [
+                    '.market_listing_row',
+                    '.market_recent_listing_row', 
+                    '.market_listing_row_link',
+                    '#searchResultsRows .market_listing_row'
+                ];
+                
+                let marketListings = [];
+                selectors.forEach(selector => {
+                    const found = document.querySelectorAll(selector);
+                    this.log(`Selector "${selector}" found ${found.length} elements`);
+                    found.forEach(element => {
+                        if (!marketListings.includes(element)) {
+                            marketListings.push(element);
+                        }
+                    });
+                });
+                
+                this.log(`Total unique market listings found: ${marketListings.length}`);
+                
+                // Debug element removed for production
+                
+                if (marketListings.length > 0) {
+                    marketListings.forEach((listing, index) => {
+                        this.log(`Processing listing ${index + 1}/${marketListings.length}`);
+                        this.processMarketListing(listing, index);
+                    });
+                } else {
+                    this.log('No market listings found, will try again in 2 seconds');
+                    this.log('Available elements:');
+                    this.log('- .market_listing_row:', document.querySelectorAll('.market_listing_row').length);
+                    this.log('- .market_recent_listing_row:', document.querySelectorAll('.market_recent_listing_row').length);
+                    this.log('- .market_listing_row_link:', document.querySelectorAll('.market_listing_row_link').length);
+                    setTimeout(() => this.processMarketPage(), 2000);
+                }
+            }, 1000);
+            
+            // Set up observer for dynamic content
+            this.setupMarketObserver();
+        },
+
+        processInventoryPage() {
+            this.log('Processing inventory page...');
+            this.log('Injecting Steam inventory API script...');
+            
+            // Inject the inventory script that uses Steam's internal APIs
+            this.injectInventoryScript();
+        },
+        
+        injectInventoryScript() {
+            // Check if already injected
+            if (document.querySelector('script[data-cs2-inventory-injector]')) {
+                this.log('Inventory script already injected');
+                return;
+            }
+            
+            this.log('🚀 Starting inventory script injection...');
+            
+            try {
+                const script = document.createElement('script');
+                const scriptUrl = chrome.runtime.getURL('src/inventoryInjector.js');
+                
+                this.log('📄 Script URL:', scriptUrl);
+                
+                script.src = scriptUrl;
+                script.dataset.cs2InventoryInjector = 'true';
+                script.type = 'text/javascript';
+                
+                script.onload = () => {
+                    this.log('✅ Inventory script injected successfully');
+                    // Visual confirmation removed for production
+                };
+                
+                script.onerror = (error) => {
+                    this.log('❌ Error injecting inventory script:', error);
+                    // Error indicator removed for production
+                };
+                
+                this.log('📝 Appending script to document head/documentElement');
+                
+                // Inject into head for maximum compatibility
+                (document.head || document.documentElement).appendChild(script);
+                
+            } catch (error) {
+                this.log('❌ Error creating inventory script:', error);
+            }
+        },
+
+        processGenericPage() {
+            this.log('Processing generic page...');
+            
+            // Look for any CS2 items
+            const items = document.querySelectorAll('[data-inspect], .item[data-economy-item], [href*="steam://rungame/730"]');
+            this.log(`Found ${items.length} generic items`);
+            
+            items.forEach((item, index) => {
+                this.processGenericItem(item, index);
+            });
+        },
+
+        processMarketListing(listing, index) {
+            // Use a unique identifier that includes the listing ID to prevent duplicates
+            const listingId = listing.id || `listing_${index}`;
+            const uniqueKey = `${listingId}_${listing.innerHTML.length}`;
+            
+            if (this.processedItems.has(uniqueKey)) {
+                this.log(`Listing ${index + 1} (${listingId}) already processed, skipping`);
+                return;
+            }
+            this.processedItems.add(uniqueKey);
+            
+            // Check if float info already exists to prevent duplicates
+            if (listing.querySelector('.cs2-float-display')) {
+                this.log(`Listing ${index + 1} already has float display, skipping`);
+                return;
+            }
+            
+            this.log(`Processing market listing ${index + 1}, ID: ${listingId}`);
+            
+            // Look for inspect link
+            const inspectLink = this.extractInspectLink(listing);
+            if (inspectLink) {
+                this.log(`Found inspect link: ${inspectLink.substring(0, 80)}...`);
+                
+                // Success counter debug element removed for production
+                
+                this.addFloatDisplay(listing, inspectLink, 'market');
+            } else {
+                this.log(`No inspect link found for listing ${index + 1}`);
+                // Log some debugging info about the listing structure
+                this.log('Listing innerHTML preview:', listing.innerHTML.substring(0, 200) + '...');
+                this.log('Listing has .market_listing_row_action:', !!listing.querySelector('.market_listing_row_action'));
+                this.log('Listing has steam:// link:', listing.innerHTML.includes('steam://rungame/730'));
+            }
+        },
+
+        // Inventory processing now handled by injected Steam API script
+
+        processGenericItem(item, index) {
+            if (this.processedItems.has(item)) return;
+            this.processedItems.add(item);
+            
+            this.log(`Processing generic item ${index + 1}`);
+            
+            // Look for inspect link
+            const inspectLink = this.extractInspectLink(item);
+            if (inspectLink) {
+                this.log(`Found inspect link: ${inspectLink.substring(0, 50)}...`);
+                this.addFloatDisplay(item, inspectLink, 'generic');
+            }
+        },
+
+        extractInspectLink(element) {
+            this.log('Extracting inspect link from element:', element.tagName, element.className);
+            
+            // Try multiple methods to find inspect link
+            let inspectLink = null;
+            
+            // Method 1: Look for "Inspect in Game..." link specifically for market listings
+            const inspectElement = element.querySelector('a[href*="steam://rungame/730"]');
+            if (inspectElement) {
+                this.log('Method 1 success: Found steam link in <a> tag');
+                return inspectElement.getAttribute('href');
+            }
+            
+            // Method 2: Look in the market_listing_row_action div
+            const actionDiv = element.querySelector('.market_listing_row_action a');
+            if (actionDiv && actionDiv.href && actionDiv.href.includes('steam://rungame/730')) {
+                this.log('Method 2 success: Found steam link in action div');
+                return actionDiv.href;
+            }
+            
+            // Method 3: data-inspect attribute
+            inspectLink = element.getAttribute('data-inspect');
+            if (inspectLink) {
+                this.log('Method 3 success: Found data-inspect attribute');
+                return inspectLink;
+            }
+            
+            // Method 4: Look for inspect link in child elements with data-inspect
+            const dataInspectElement = element.querySelector('[data-inspect]');
+            if (dataInspectElement) {
+                this.log('Method 4 success: Found data-inspect in child element');
+                return dataInspectElement.getAttribute('data-inspect');
+            }
+            
+            // Method 5: Look for inspect link in onclick attributes
+            const allElements = element.querySelectorAll('*');
+            for (const el of allElements) {
+                const onclickAttr = el.getAttribute('onclick') || '';
+                const steamLinkMatch = onclickAttr.match(/steam:\/\/rungame\/730[^'"]+/);
+                if (steamLinkMatch) {
+                    this.log('Method 5 success: Found steam link in onclick attribute');
+                    return steamLinkMatch[0];
+                }
+            }
+            
+            // Method 6: Look in innerHTML for steam links
+            const innerHTML = element.innerHTML;
+            const steamLinkMatch = innerHTML.match(/steam:\/\/rungame\/730[^'">\s]+/);
+            if (steamLinkMatch) {
+                this.log('Method 6 success: Found steam link in innerHTML');
+                return steamLinkMatch[0];
+            }
+            
+            this.log('All methods failed to find inspect link');
+            return null;
+        },
+
+        async addFloatDisplay(element, inspectLink, type) {
+            try {
+                this.log(`Adding float display for ${type} item...`);
+                
+                // For market listings, find the right place to insert float info
+                let insertTarget = element;
+                if (type === 'market') {
+                    const nameBlock = element.querySelector('.market_listing_item_name_block');
+                    const itemName = element.querySelector('.market_listing_item_name');
+                    if (nameBlock && itemName) {
+                        insertTarget = itemName; // Insert after the item name specifically
+                    }
+                }
+                
+                // Add loading indicator
+                const loadingIndicator = this.createLoadingIndicator();
+                if (type === 'market' && insertTarget !== element) {
+                    insertTarget.parentNode.insertBefore(loadingIndicator, insertTarget.nextSibling);
+                } else {
+                    element.appendChild(loadingIndicator);
+                }
+                
+                // Get float data
+                const floatData = await this.floatAPI.getFloatData(inspectLink);
+                
+                // Remove loading indicator
+                if (loadingIndicator.parentNode) {
+                    loadingIndicator.remove();
+                }
+                
+                // Check for float value in correct location
+                const itemInfo = floatData?.iteminfo || floatData;
+                const floatValue = itemInfo?.floatvalue || itemInfo?.float_value;
+                
+                if (floatData && floatValue !== undefined) {
+                    this.log(`✅ Float data received: ${floatValue}`);
+                    
+                    // Create float display
+                    const floatDisplay = this.createFloatDisplay(floatData, type);
+                    
+                    // Position it correctly for market listings
+                    if (type === 'market' && insertTarget !== element) {
+                        insertTarget.parentNode.insertBefore(floatDisplay, insertTarget.nextSibling);
+                    } else {
+                        element.appendChild(floatDisplay);
+                    }
+                    
+                    // Add highlight if needed
+                    this.addFloatHighlight(element, floatValue);
+                    
+                    // Skip hover tooltip for market listings to avoid conflicts with Steam's native hover
+                    if (type !== 'market') {
+                        this.addHoverTooltip(element, floatData);
+                    }
+                    
+                } else {
+                    this.log('No float data received or invalid response');
+                    
+                    // Show error indicator
+                    const errorIndicator = this.createErrorIndicator();
+                    if (type === 'market' && insertTarget !== element) {
+                        insertTarget.parentNode.insertBefore(errorIndicator, insertTarget.nextSibling);
+                    } else {
+                        element.appendChild(errorIndicator);
+                    }
+                }
+            } catch (error) {
+                this.log('Error adding float display:', error);
+                
+                // Show error indicator
+                const errorIndicator = this.createErrorIndicator();
+                element.appendChild(errorIndicator);
+            }
+        },
+
+        createLoadingIndicator() {
+            const loading = document.createElement('div');
+            loading.className = 'cs2-float-loading';
+            loading.textContent = 'Loading float...';
+            loading.style.cssText = `
+                position: absolute;
+                top: 5px;
+                left: 5px;
+                background: rgba(34, 197, 94, 0.9);
+                color: white;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: bold;
+                z-index: 1000;
+                animation: pulse 1s infinite;
+            `;
+            return loading;
+        },
+
+        createFloatDisplay(floatData, type) {
+            const container = document.createElement('div');
+            container.className = `cs2-float-display cs2-float-${type}`;
+            
+            // Handle different API response formats
+            const itemInfo = floatData.iteminfo || floatData;
+            
+            // Extract all the data like the competitor does
+            const floatValue = itemInfo.floatvalue || itemInfo.float_value || itemInfo.wear_value || null;
+            const paintSeed = itemInfo.paintseed || itemInfo.pattern || null;
+            const paintIndex = itemInfo.paintindex || null;
+            const origin = itemInfo.origin || null;
+            const originName = itemInfo.origin_name || itemInfo.originName || this.getOriginName(origin);
+            
+            if (floatValue === null) {
+                this.log('No float value found in response. Available fields:', Object.keys(itemInfo));
+                container.innerHTML = `
+                    <div class="cs2-float-error" style="background: rgba(220, 38, 38, 0.9); color: white; padding: 4px; font-size: 11px; border-radius: 3px;">
+                        ❌ Float data unavailable
+                    </div>
+                `;
+                return container;
+            }
+            
+            // Format like competitor: "Float: 0.14642542600631714"
+            const displayFloat = parseFloat(floatValue).toFixed(this.settings.floatPrecision || 6);
+            
+            // Create professional display matching competitor format
+            if (type === 'inventory') {
+                // For inventory - overlay style like competitor
+                container.innerHTML = `
+                    <div class="item-info">
+                        <div class="float-data">
+                            <div class="item_row item_row__value">
+                                <span class="float-value" title="Click to copy float">${displayFloat}</span>
+                            </div>
+                        </div>
+                    </div>
+                    ${paintSeed ? `
+                    <div class="item-info-paintseed">
+                        <div class="float-data">
+                            <div class="item_row item_row__transparent">
+                                <span class="paintseed">${paintSeed}</span>
+                            </div>
+                        </div>
+                    </div>` : ''}
+                `;
+            } else {
+                // For market listings - inline text style
+                container.innerHTML = `
+                    <div class="cs2-market-float" style="
+                        background: transparent; 
+                        color: #8F98A0; 
+                        padding: 2px 0; 
+                        margin: 2px 0; 
+                        border-radius: 0; 
+                        font-size: 11px;
+                        font-weight: normal;
+                        border: none;
+                        box-shadow: none;
+                        font-family: Arial, Helvetica, sans-serif;
+                    ">
+                        <div style="line-height: 1.4;">
+                            <div style="font-size: 13px; font-weight: 600; color: #4CAF50; margin-bottom: 1px;">
+                                Float: ${displayFloat}
+                            </div>
+                            ${(paintSeed || paintIndex || originName) ? `
+                            <div style="font-size: 11px; color: #8F98A0;">
+                                ${paintSeed ? `Pattern: ${paintSeed}` : ''}${paintSeed && (paintIndex || originName) ? ' | ' : ''}${paintIndex ? `Paint Index: ${paintIndex}` : ''}${paintIndex && originName ? ' | ' : ''}${originName ? `Origin: ${originName}` : ''}
+                            </div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Style based on type - integrate with Steam UI
+            if (type === 'market') {
+                container.style.cssText = `
+                    position: relative;
+                    background: transparent;
+                    color: inherit;
+                    padding: 0;
+                    border-radius: 0;
+                    font-size: inherit;
+                    text-align: left;
+                    z-index: 1;
+                    border: none;
+                    margin: 0;
+                    box-shadow: none;
+                    pointer-events: none;
+                `;
+            } else if (type === 'inventory') {
+                container.style.cssText = `
+                    position: absolute;
+                    bottom: 2px;
+                    left: 2px;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: #22c55e;
+                    padding: 3px 6px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    text-align: center;
+                    z-index: 1000;
+                    border: 1px solid #22c55e;
+                    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+                `;
+            }
+            
+            return container;
+        },
+
+        createErrorIndicator() {
+            const error = document.createElement('div');
+            error.className = 'cs2-float-error';
+            error.textContent = '!';
+            error.title = 'Float check failed';
+            error.style.cssText = `
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                background: rgba(239, 68, 68, 0.9);
+                color: white;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: bold;
+                z-index: 1000;
+                cursor: help;
+            `;
+            return error;
+        },
+
+        getWearName(floatValue) {
+            if (floatValue < 0.07) return 'FN';
+            if (floatValue < 0.15) return 'MW';
+            if (floatValue < 0.38) return 'FT';
+            if (floatValue < 0.45) return 'WW';
+            return 'BS';
+        },
+
+        getOriginName(origin) {
+            const origins = {
+                0: 'Timed Drop',
+                1: 'Achievement',
+                2: 'Purchased',
+                3: 'Traded',
+                4: 'Crafted',
+                5: 'Store Promotion',
+                6: 'Gifted',
+                7: 'Support Granted',
+                8: 'Found in Crate',
+                9: 'Earned',
+                10: 'Third-Party Site',
+                11: 'Halloween Drop',
+                12: 'Steam Purchase',
+                14: 'Market',
+                15: 'Quest Reward',
+                16: 'Level Up Reward'
+            };
+            return origins[origin] || `Origin ${origin}`;
+        },
+
+        addFloatHighlight(element, floatValue) {
+            if (this.settings.highlightLowFloat && floatValue <= this.settings.lowFloatThreshold) {
+                element.style.boxShadow = '0 0 10px #22c55e';
+                element.style.border = '2px solid #22c55e';
+            } else if (this.settings.highlightHighFloat && floatValue >= this.settings.highFloatThreshold) {
+                element.style.boxShadow = '0 0 10px #ef4444';
+                element.style.border = '2px solid #ef4444';
+            }
+        },
+
+        addHoverTooltip(element, floatData) {
+            element.addEventListener('mouseenter', (e) => {
+                this.showTooltip(e, floatData);
+            });
+            
+            element.addEventListener('mouseleave', () => {
+                this.hideTooltip();
+            });
+        },
+
+        showTooltip(event, floatData) {
+            this.hideTooltip(); // Remove any existing tooltip
+            
+            const tooltip = document.createElement('div');
+            tooltip.className = 'cs2-float-tooltip';
+            
+            // Extract data correctly from API response
+            const itemInfo = floatData?.iteminfo || floatData;
+            const floatValue = itemInfo?.floatvalue || itemInfo?.float_value;
+            const paintSeed = itemInfo?.paintseed || itemInfo?.paint_seed || 'Unknown';
+            const paintIndex = itemInfo?.paintindex || itemInfo?.paint_index || 'Unknown';
+            const origin = itemInfo?.origin || 'Unknown';
+            const originName = itemInfo?.origin_name || this.getOriginName(origin);
+            
+            if (!floatValue) {
+                this.log('No float value available for tooltip');
+                return;
+            }
+            
+            const displayFloat = parseFloat(floatValue).toFixed(this.settings.floatPrecision || 6);
+            const wearName = this.getWearName(floatValue);
+            
+            tooltip.innerHTML = `
+                <div class="tooltip-header">CS2 Float Info</div>
+                <div class="tooltip-row">
+                    <span>Float:</span>
+                    <span style="color: #8F98A0; font-weight: bold;">${displayFloat}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span>Wear:</span>
+                    <span>${wearName}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span>Paint Seed:</span>
+                    <span>${paintSeed}</span>
+                </div>
+                ${paintIndex !== 'Unknown' ? `
+                <div class="tooltip-row">
+                    <span>Paint Index:</span>
+                    <span>${paintIndex}</span>
+                </div>` : ''}
+                ${originName !== 'Unknown' ? `
+                <div class="tooltip-row">
+                    <span>Origin:</span>
+                    <span>${originName}</span>
+                </div>` : ''}
+            `;
+            
+            tooltip.style.cssText = `
+                position: fixed;
+                background: rgba(42, 50, 58, 0.98);
+                color: #c6d4df;
+                padding: 12px;
+                border-radius: 3px;
+                border: 1px solid rgba(102, 119, 136, 0.4);
+                font-size: 12px;
+                z-index: 99999;
+                pointer-events: none;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+                font-family: Arial, Helvetica, sans-serif;
+            `;
+            
+            // Position tooltip near cursor
+            const x = event.clientX + 10;
+            const y = event.clientY - 10;
+            
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = y + 'px';
+            
+            document.body.appendChild(tooltip);
+            this.currentTooltip = tooltip;
+        },
+
+        hideTooltip() {
+            if (this.currentTooltip) {
+                this.currentTooltip.remove();
+                this.currentTooltip = null;
+            }
+        },
+
+        setupMarketObserver() {
+            const observer = new MutationObserver((mutations) => {
+                let hasNewListings = false;
+                
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'childList') {
+                        mutation.addedNodes.forEach((node) => {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                if (node.classList.contains('market_listing_row') || 
+                                    node.querySelector('.market_listing_row')) {
+                                    hasNewListings = true;
+                                }
+                            }
+                        });
+                    }
+                });
+                
+                if (hasNewListings) {
+                    this.log('New market listings detected, processing...');
+                    setTimeout(() => this.processMarketPage(), 500);
+                }
+            });
+            
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        },
+
+        // Inventory observer no longer needed - Steam API handles dynamic updates
+
+        injectStyles() {
+            if (document.getElementById('cs2-float-styles')) return;
+            
+            const styles = document.createElement('style');
+            styles.id = 'cs2-float-styles';
+            styles.textContent = `
+                .cs2-float-display {
+                    font-family: 'Courier New', monospace;
+                    user-select: none;
+                }
+                
+                .cs2-float-value {
+                    font-weight: bold;
+                    font-size: 11px;
+                }
+                
+                .cs2-float-wear {
+                    font-size: 9px;
+                    opacity: 0.8;
+                }
+                
+                .cs2-float-tooltip {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                }
+                
+                .cs2-float-tooltip .tooltip-header {
+                    font-weight: bold;
+                    margin-bottom: 8px;
+                    color: #22c55e;
+                    border-bottom: 1px solid #333;
+                    padding-bottom: 4px;
+                }
+                
+                .cs2-float-tooltip .tooltip-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin: 4px 0;
+                    min-width: 120px;
+                }
+                
+                /* Keep our float display behind Steam popups */
+                .cs2-float-display.cs2-float-market {
+                    z-index: 1 !important;
+                    position: relative !important;
+                    pointer-events: none !important;
+                }
+                
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.5; }
+                }
+            `;
+            
+            document.head.appendChild(styles);
+        }
     };
-  }
 
-  async init() {
-    try {
-      // Initialize FloatAPI first
-      if (window.FloatAPI) {
-        this.floatAPI = new FloatAPI();
-        console.log('FloatAPI initialized successfully');
-      } else {
-        console.error('FloatAPI not available');
-        return;
-      }
-      
-      await this.loadSettings();
-      this.injectStyles();
-      
-      // Auto-load floats if enabled
-      if (this.settings.autoLoad) {
-        setTimeout(() => this.processPage(), 1000);
-      }
-      
-      this.setupObserver();
-      this.addControls();
-      
-      chrome.runtime.onMessage.addListener(this.handleMessage.bind(this));
-      console.log('CS2 Float Checker initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize CS2 Float Checker:', error);
-    }
-  }
-
-  async loadSettings() {
-    try {
-      const result = await chrome.storage.local.get(['settings']);
-      if (result.settings) {
-        this.settings = { ...this.settings, ...result.settings };
-      }
-    } catch (e) {
-      console.log('Using default settings');
-    }
-  }
-
-  processPage() {
-    const hostname = window.location.hostname;
-    const pathname = window.location.pathname;
-    
-    // Steam Community only - focused approach
-    if (hostname.includes('steamcommunity.com')) {
-      if (pathname.includes('/market/')) {
-        this.processMarketListings();
-      } else if (pathname.includes('/inventory/')) {
-        this.processInventoryItems();
-      } else if (pathname.includes('/tradehistory')) {
-        this.processTradeHistory();
-      } else if (pathname.includes('/tradeoffer/')) {
-        this.processTradeOffer();
-      }
-    }
-  }
-
-  async processMarketListings() {
-    const listings = document.querySelectorAll('.market_listing_row');
-    const batch = [];
-    
-    for (const listing of listings) {
-      if (this.processedItems.has(listing)) continue;
-      
-      const inspectLink = this.extractInspectLink(listing);
-      if (inspectLink) {
-        batch.push({ element: listing, link: inspectLink });
-        this.processedItems.add(listing);
-      }
-    }
-    
-    if (batch.length === 0) return;
-    
-    console.log(`Processing ${batch.length} market listings...`);
-    
-    // Process in smaller batches to avoid rate limits
-    for (let i = 0; i < batch.length; i += 5) {
-      const chunk = batch.slice(i, i + 5);
-      await this.processBatch(chunk);
-      
-      // Small delay between batches
-      if (i + 5 < batch.length) {
-        await this.delay(500);
-      }
-    }
-  }
-
-  async processBatch(items) {
-    if (!this.floatAPI) {
-      console.error('FloatAPI not initialized');
-      return;
-    }
-    
-    const promises = items.map(item => 
-      this.floatAPI.getItemFloat(item.link)
-        .then(data => ({ element: item.element, data }))
-        .catch(err => ({ element: item.element, error: err }))
-    );
-    
-    const results = await Promise.allSettled(promises);
-    
-    results.forEach(result => {
-      if (result.status === 'fulfilled' && result.value.data) {
-        this.displayFloatInfo(result.value.element, result.value.data);
-      }
-    });
-  }
-
-  async processInventoryItems() {
-    const items = document.querySelectorAll('.item.app730');
-    let processed = 0;
-    
-    for (const item of items) {
-      if (this.processedItems.has(item)) continue;
-      
-      const inspectLink = this.extractInventoryInspectLink(item);
-      if (inspectLink) {
-        try {
-          const floatData = await this.floatAPI.getItemFloat(inspectLink);
-          if (floatData) {
-            this.displayFloatBadge(item, floatData);
-            processed++;
-          }
-        } catch (e) {
-          console.log('Float fetch failed:', e.message);
-        }
-        
-        this.processedItems.add(item);
-        
-        // Rate limiting
-        if (processed % 3 === 0) {
-          await this.delay(200);
-        }
-      }
-    }
-    
-    if (processed > 0) {
-      this.showToast(`Loaded ${processed} inventory floats`);
-    }
-  }
-
-  extractInspectLink(element) {
-    // Enhanced Steam integration - try Steam's global variables first
-    const steamData = this.getSteamItemData(element);
-    if (steamData?.inspectLink) {
-      return steamData.inspectLink;
-    }
-    
-    // Fallback: Look for inspect buttons
-    const inspectBtn = element.querySelector('a[href*="csgo_econ_action_preview"]');
-    if (inspectBtn) {
-      const match = inspectBtn.href.match(/steam:\/\/rungame\/730\/[^'"]+/);
-      return match ? match[0] : null;
-    }
-    
-    // Look in onclick handlers
-    const actionBtns = element.querySelectorAll('a');
-    for (const btn of actionBtns) {
-      const onclick = btn.getAttribute('onclick') || '';
-      const match = onclick.match(/steam:\/\/rungame\/730\/[^'"]+/);
-      if (match) return match[0];
-    }
-    
-    return null;
-  }
-
-  // Enhanced Steam integration using global variables
-  getSteamItemData(element) {
-    try {
-      const listingId = this.extractListingId(element);
-      if (!listingId || !window.g_rgListingInfo) return null;
-      
-      const listingInfo = window.g_rgListingInfo[listingId];
-      if (!listingInfo) return null;
-      
-      const asset = window.g_rgAssets?.[730]?.[2]?.[listingInfo.asset?.id];
-      if (!asset) return null;
-      
-      // Extract inspect link from asset
-      const inspectAction = asset.market_actions?.find(action => 
-        action.name === 'Inspect in Game...' || action.link.includes('csgo_econ_action_preview')
-      );
-      
-      if (inspectAction) {
-        const inspectLink = inspectAction.link
-          .replace('%listingid%', listingId)
-          .replace('%assetid%', asset.id);
-        
-        return {
-          listingInfo,
-          asset,
-          inspectLink,
-          itemName: asset.name || asset.market_name,
-          hasStickers: asset.descriptions?.some(desc => desc.value?.includes('Sticker'))
-        };
-      }
-    } catch (e) {
-      console.debug('Steam data extraction failed:', e);
-    }
-    return null;
-  }
-
-  extractListingId(element) {
-    // Try multiple methods to get listing ID
-    const nameElement = element.querySelector('.market_listing_item_name');
-    if (nameElement?.id) {
-      const match = nameElement.id.match(/listing_(\d+)_name/);
-      if (match) return match[1];
-    }
-    
-    // Try data attributes
-    const listingRow = element.closest('.market_listing_row');
-    if (listingRow?.id) {
-      const match = listingRow.id.match(/listing_(\d+)/);
-      if (match) return match[1];
-    }
-    
-    return null;
-  }
-
-  extractInventoryInspectLink(item) {
-    const actions = item.getAttribute('data-actions');
-    if (!actions) return null;
-    
-    try {
-      const actionsData = JSON.parse(actions);
-      const inspectAction = actionsData.find(a => a.name?.includes('Inspect'));
-      return inspectAction?.link || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  displayFloatInfo(element, floatData) {
-    const container = this.createElement('div', 'cs2-float-container');
-    
-    const float = floatData.floatValue?.toFixed(this.settings.floatPrecision) || 'N/A';
-    const wear = floatData.wear || 'Unknown';
-    
-    // Determine highlight class
-    let highlightClass = '';
-    if (floatData.floatValue < this.settings.lowFloatThreshold && this.settings.highlightLowFloat) {
-      highlightClass = 'highlight-low';
-    } else if (floatData.floatValue > this.settings.highFloatThreshold && this.settings.highlightHighFloat) {
-      highlightClass = 'highlight-high';
-    }
-    
-    // Create main float info container
-    const floatInfo = this.createElement('div', `float-info ${highlightClass}`);
-    
-    // Create main float display
-    const floatMain = this.createElement('div', 'float-main');
-    floatMain.appendChild(this.createElement('span', 'label', 'Float:'));
-    
-    const valueSpan = this.createElement('span', 'value', float);
-    valueSpan.title = floatData.floatValue?.toFixed(14) || 'N/A';
-    floatMain.appendChild(valueSpan);
-    floatMain.appendChild(this.createElement('span', 'wear', wear));
-    
-    floatInfo.appendChild(floatMain);
-    
-    // Add paint seed if enabled
-    if (this.settings.showPaintSeed && floatData.paintSeed) {
-      const patternDetail = this.createElement('div', 'float-detail');
-      patternDetail.appendChild(this.createElement('span', 'label', 'Pattern:'));
-      patternDetail.appendChild(this.createElement('span', 'value', floatData.paintSeed.toString()));
-      floatInfo.appendChild(patternDetail);
-    }
-    
-    // Add float rank if enabled
-    if (this.settings.showFloatRank && floatData.floatRank) {
-      const rankDetail = this.createElement('div', 'float-detail');
-      rankDetail.appendChild(this.createElement('span', 'label', 'Rank:'));
-      rankDetail.appendChild(this.createElement('span', 'value', `Top ${floatData.floatRank}%`));
-      floatInfo.appendChild(rankDetail);
-    }
-    
-    // Add visual float bar
-    if (floatData.floatValue && this.settings.showFloatBar !== false) {
-      const floatBar = this.createFloatBar(
-        floatData.floatValue,
-        floatData.min || 0,
-        floatData.max || 1,
-        floatData.wear || 'Unknown'
-      );
-      floatInfo.appendChild(floatBar);
-    }
-    
-    // Add stickers if enabled
-    if (this.settings.showStickers && floatData.stickers?.length > 0) {
-      const stickersContainer = this.createElement('div', 'stickers');
-      floatData.stickers.slice(0, 4).forEach(sticker => {
-        const stickerDiv = this.createElement('div', 'sticker');
-        stickerDiv.title = `${sticker.name || 'Sticker'} (${(sticker.wear * 100).toFixed(0)}% wear)`;
-        stickerDiv.appendChild(this.createElement('span', 'wear-pct', `${(sticker.wear * 100).toFixed(0)}%`));
-        stickersContainer.appendChild(stickerDiv);
-      });
-      floatInfo.appendChild(stickersContainer);
-    }
-    
-    container.appendChild(floatInfo);
-    
-    const nameEl = element.querySelector('.market_listing_item_name, .market_listing_item_name_block');
-    if (nameEl) {
-      nameEl.appendChild(container);
-    }
-  }
-
-  displayFloatBadge(element, floatData) {
-    const badge = document.createElement('div');
-    badge.className = 'cs2-float-badge';
-    
-    const float = floatData.floatValue?.toFixed(this.settings.floatPrecision) || 'N/A';
-    let badgeClass = '';
-    
-    if (floatData.floatValue < 0.07) badgeClass = 'badge-fn';
-    else if (floatData.floatValue < 0.15) badgeClass = 'badge-mw';
-    else if (floatData.floatValue < 0.37) badgeClass = 'badge-ft';
-    else if (floatData.floatValue < 0.44) badgeClass = 'badge-ww';
-    else badgeClass = 'badge-bs';
-    
-    badge.innerHTML = `<span class="badge-content ${badgeClass}">${float}</span>`;
-    badge.title = `Float: ${floatData.floatValue?.toFixed(this.settings.floatPrecision) || 'N/A'}\\nWear: ${floatData.wear || 'Unknown'}`;
-    
-    element.appendChild(badge);
-  }
-
-  addControls() {
-    // Add float reload button to market pages
-    if (window.location.pathname.includes('/market/')) {
-      const header = document.querySelector('#searchResultsTable, .market_listing_table_header');
-      if (header && !document.querySelector('.cs2-float-controls')) {
-        const controls = document.createElement('div');
-        controls.className = 'cs2-float-controls';
-        controls.innerHTML = `
-          <button class="cs2-btn" id="cs2-load-floats">Load All Floats</button>
-          <span class="cs2-status" id="cs2-status">Ready</span>
-        `;
-        
-        header.appendChild(controls);
-        
-        document.getElementById('cs2-load-floats').addEventListener('click', () => {
-          this.processedItems.clear();
-          this.processPage();
-        });
-      }
-    }
-  }
-
-  setupObserver() {
-    const observer = new MutationObserver(() => {
-      // Debounce to avoid too many calls
-      clearTimeout(this.observerTimeout);
-      this.observerTimeout = setTimeout(() => {
-        if (this.settings.autoLoad) {
-          this.processPage();
-        }
-      }, 500);
-    });
-
-    const target = document.querySelector('#searchResultsRows, #inventorypage730, .inventory_page');
-    if (target) {
-      observer.observe(target, {
-        childList: true,
-        subtree: true
-      });
-    }
-  }
-
-  injectStyles() {
-    if (document.getElementById('cs2-float-styles')) return;
-    
-    const style = document.createElement('style');
-    style.id = 'cs2-float-styles';
-    style.textContent = `
-      .cs2-float-container {
-        margin-top: 8px;
-        font-size: 12px;
-      }
-      
-      .float-info {
-        background: #2a5298;
-        color: white;
-        padding: 8px;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      }
-      
-      .float-info.highlight-low {
-        background: #00b09b;
-        animation: pulse 2s infinite;
-      }
-      
-      .float-info.highlight-high {
-        background: #fc4a1a;
-      }
-      
-      .float-main {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 4px;
-      }
-      
-      .float-detail {
-        display: flex;
-        gap: 4px;
-        font-size: 11px;
-        opacity: 0.9;
-      }
-      
-      .label {
-        color: #b8d4ff;
-        font-weight: 500;
-      }
-      
-      .value {
-        color: white;
-        font-family: 'Courier New', monospace;
-        font-weight: bold;
-      }
-      
-      .wear {
-        background: rgba(0,0,0,0.3);
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 10px;
-        color: #ffd700;
-      }
-      
-      .stickers {
-        display: flex;
-        gap: 4px;
-        margin-top: 4px;
-      }
-      
-      .sticker {
-        width: 20px;
-        height: 20px;
-        background: #667eea;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 9px;
-        color: white;
-        font-weight: bold;
-      }
-      
-      .cs2-float-badge {
-        position: absolute;
-        top: 4px;
-        right: 4px;
-        z-index: 10;
-      }
-      
-      .badge-content {
-        background: #667eea;
-        color: white;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 10px;
-        font-weight: bold;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      }
-      
-      .badge-fn { background: #11998e; }
-      .badge-mw { background: #4facfe; }
-      .badge-ft { background: #fa709a; }
-      .badge-ww { background: #f093fb; }
-      .badge-bs { background: #ff6b6b; }
-      
-      .cs2-float-controls {
-        margin: 10px 0;
-        padding: 10px;
-        background: #f5f5f5;
-        border-radius: 4px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      
-      .cs2-btn {
-        background: #667eea;
-        color: white;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-weight: 500;
-        transition: transform 0.2s;
-      }
-      
-      .cs2-btn:hover {
-        transform: translateY(-1px);
-      }
-      
-      .cs2-status {
-        color: #666;
-        font-size: 12px;
-      }
-      
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.8; }
-      }
-      
-      .cs2-toast {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: #11998e;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 6px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        z-index: 100000;
-        font-size: 14px;
-        font-weight: 500;
-        transform: translateX(100%);
-        transition: transform 0.3s ease;
-      }
-      
-      .cs2-toast.show {
-        transform: translateX(0);
-      }
-      
-      .cs2-enhancement {
-        position: absolute;
-        top: 8px;
-        left: 8px;
-        z-index: 10;
-      }
-      
-      .enhancement-badge {
-        background: #ff6b6b;
-        color: #1a1a1a;
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-size: 10px;
-        font-weight: bold;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      }
-      
-      .cs2-generic-float {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        z-index: 10;
-      }
-      
-      .generic-float-badge {
-        background: rgba(0, 0, 0, 0.8);
-        backdrop-filter: blur(4px);
-        border-radius: 6px;
-        padding: 6px 8px;
-        font-size: 11px;
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-      }
-      
-      .float-main-line {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 2px;
-      }
-      
-      .float-val {
-        font-family: 'Courier New', monospace;
-        font-weight: bold;
-        color: #00ff87;
-      }
-      
-      .wear-badge {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 1px 4px;
-        border-radius: 3px;
-        font-size: 9px;
-      }
-      
-      .seed-line {
-        font-size: 9px;
-        opacity: 0.8;
-      }
-    `;
-    
-    document.head.appendChild(style);
-  }
-
-  showToast(message, duration = 3000) {
-    const toast = document.createElement('div');
-    toast.className = 'cs2-toast';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => toast.classList.add('show'), 100);
-    
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => toast.remove(), 300);
-    }, duration);
-  }
-
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  // Steam Trade History support
-  async processTradeHistory() {
-    if (!this.floatAPI) {
-      console.error('FloatAPI not initialized');
-      return;
-    }
-    
-    console.log('Processing trade history...');
-    const tradeItems = document.querySelectorAll('.trade_item, .trade_history_row');
-    let processed = 0;
-    
-    for (const item of tradeItems) {
-      if (this.processedItems.has(item)) continue;
-      
-      const inspectLink = this.extractInspectLink(item);
-      if (inspectLink) {
-        try {
-          const floatData = await this.floatAPI.getItemFloat(inspectLink);
-          if (floatData) {
-            this.displayFloatInfo(item, floatData);
-            processed++;
-          }
-        } catch (e) {
-          console.debug('Trade history float fetch failed:', e);
-        }
-      }
-      
-      this.processedItems.add(item);
-      
-      // Small delay to avoid overwhelming the API
-      if (processed % 3 === 0) {
-        await this.delay(200);
-      }
-    }
-    
-    if (processed > 0) {
-      this.showToast(`Loaded ${processed} trade history floats`);
-    }
-  }
-
-  // Steam Trade Offer support
-  async processTradeOffer() {
-    if (!this.floatAPI) {
-      console.error('FloatAPI not initialized');
-      return;
-    }
-    
-    console.log('Processing trade offer...');
-    const tradeItems = document.querySelectorAll('.trade_offer_item, .item.cs2, .trade_slot .item');
-    let processed = 0;
-    
-    for (const item of tradeItems) {
-      if (this.processedItems.has(item)) continue;
-      
-      const inspectLink = this.extractInspectLink(item);
-      if (inspectLink) {
-        try {
-          const floatData = await this.floatAPI.getItemFloat(inspectLink);
-          if (floatData) {
-            this.displayFloatInfo(item, floatData);
-            processed++;
-          }
-        } catch (e) {
-          console.debug('Trade offer float fetch failed:', e);
-        }
-      }
-      
-      this.processedItems.add(item);
-      
-      // Small delay to avoid overwhelming the API
-      if (processed % 3 === 0) {
-        await this.delay(200);
-      }
-    }
-    
-    if (processed > 0) {
-      this.showToast(`Loaded ${processed} trade offer floats`);
-    }
-  }
-
-  // Enhanced inventory inspect link extraction for Steam
-  extractInventoryInspectLink(item) {
-    // Try Steam's inventory data attributes first
-    const actions = item.getAttribute('data-actions');
-    if (actions) {
-      try {
-        const actionsData = JSON.parse(actions);
-        const inspectAction = actionsData.find(a => a.name?.includes('Inspect'));
-        if (inspectAction?.link) {
-          return inspectAction.link;
-        }
-      } catch (e) {
-        console.debug('Failed to parse inventory actions:', e);
-      }
-    }
-    
-    // Fallback to Steam's global inventory data
-    const itemId = item.getAttribute('data-item') || item.id;
-    if (itemId && window.g_ActiveInventory) {
-      const asset = window.g_ActiveInventory.m_rgAssets[itemId]?.description;
-      if (asset?.actions) {
-        const inspectAction = asset.actions.find(a => a.name?.includes('Inspect'));
-        return inspectAction?.link || null;
-      }
-    }
-    
-    return this.extractInspectLink(item);
-  }
-
-  getWearFromFloat(floatValue) {
-    if (floatValue < 0.07) return 'Factory New';
-    if (floatValue < 0.15) return 'Minimal Wear';
-    if (floatValue < 0.37) return 'Field-Tested';
-    if (floatValue < 0.44) return 'Well-Worn';
-    return 'Battle-Scarred';
-  }
-
-  enhanceCSFloatItem(element, floatData) {
-    // Add enhancement badge to CSFloat items
-    if (element.querySelector('.cs2-enhancement')) return;
-    
-    const enhancement = document.createElement('div');
-    enhancement.className = 'cs2-enhancement';
-    enhancement.innerHTML = `
-      <div class="enhancement-badge">
-        <span>✨ ${floatData.floatRank ? `Top ${floatData.floatRank}%` : 'Enhanced'}</span>
-      </div>
-    `;
-    
-    element.style.position = 'relative';
-    element.appendChild(enhancement);
-  }
-
-  displayGenericFloatBadge(element, floatData) {
-    if (element.querySelector('.cs2-generic-float')) return;
-    
-    const badge = document.createElement('div');
-    badge.className = 'cs2-generic-float';
-    
-    const float = floatData.floatValue?.toFixed(this.settings.floatPrecision) || 'N/A';
-    const wear = floatData.wear || 'Unknown';
-    
-    badge.innerHTML = `
-      <div class="generic-float-badge">
-        <div class="float-main-line">
-          <span class="float-val">${float}</span>
-          <span class="wear-badge">${wear}</span>
-        </div>
-        ${floatData.paintSeed ? `<div class="seed-line">Pattern: ${floatData.paintSeed}</div>` : ''}
-      </div>
-    `;
-    
-    element.style.position = 'relative';
-    element.appendChild(badge);
-  }
-
-  handleMessage(request, sender, sendResponse) {
-    try {
-      if (request.action === 'updateSettings') {
-        this.settings = { ...this.settings, ...request.settings };
-        sendResponse({ success: true });
-        return true;
-      } else if (request.action === 'reloadFloats') {
-        this.processedItems.clear();
-        this.processPage();
-        sendResponse({ success: true });
-        return true;
-      } else if (request.action === 'checkManualFloat') {
-        this.handleManualFloatCheck(request.inspectLink, sendResponse);
-        return true; // Keep message channel open for async response
-      }
-    } catch (error) {
-      console.error('Message handling error:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-    return true;
-  }
-
-  async handleManualFloatCheck(inspectLink, sendResponse) {
-    try {
-      if (!this.floatAPI) {
-        throw new Error('FloatAPI not initialized');
-      }
-      
-      if (!inspectLink) {
-        throw new Error('No inspect link provided');
-      }
-      
-      console.log('Manual float check for:', inspectLink);
-      const floatData = await this.floatAPI.getItemFloat(inspectLink);
-      
-      if (floatData) {
-        sendResponse({ success: true, data: floatData });
-      } else {
-        sendResponse({ success: false, error: 'No float data received' });
-      }
-    } catch (error) {
-      console.error('Manual float check failed:', error);
-      sendResponse({ success: false, error: error.message });
-    }
-  }
-
-  // Visual float bar component inspired by CSGOFloat website
-  createFloatBar(floatValue, minFloat, maxFloat, wearName) {
-    const container = this.createElement('div', 'cs2-float-bar-container');
-    
-    // Wear ranges with colors
-    const wearRanges = [
-      { min: 0.00, max: 0.07, color: 'var(--success-color)', name: 'Factory New' },
-      { min: 0.07, max: 0.15, color: 'var(--green-color)', name: 'Minimal Wear' },
-      { min: 0.15, max: 0.38, color: 'var(--warning-color)', name: 'Field-Tested' },
-      { min: 0.38, max: 0.45, color: 'var(--orange-color)', name: 'Well-Worn' },
-      { min: 0.45, max: 1.00, color: 'var(--danger-color)', name: 'Battle-Scarred' }
-    ];
-    
-    // Find current wear range
-    const currentRange = wearRanges.find(range => 
-      floatValue >= range.min && floatValue < range.max
-    ) || wearRanges[wearRanges.length - 1];
-    
-    // Calculate wear range bounds (intersection of skin range and wear range)
-    const wearMin = Math.max(currentRange.min, minFloat);
-    const wearMax = Math.min(currentRange.max, maxFloat);
-    
-    // Calculate position within the wear range
-    const position = ((floatValue - wearMin) / (wearMax - wearMin)) * 100;
-    
-    // Create progress bar background
-    const progressBar = this.createElement('div', 'cs2-progress-bar');
-    progressBar.style.background = currentRange.color;
-    progressBar.style.position = 'relative';
-    progressBar.style.height = '8px';
-    progressBar.style.borderRadius = '4px';
-    progressBar.style.marginTop = '4px';
-    
-    // Add wear name overlay
-    const wearLabel = this.createElement('div', 'cs2-wear-label');
-    wearLabel.textContent = wearName;
-    wearLabel.style.position = 'absolute';
-    wearLabel.style.top = '50%';
-    wearLabel.style.left = '50%';
-    wearLabel.style.transform = 'translate(-50%, -50%)';
-    wearLabel.style.fontSize = '10px';
-    wearLabel.style.fontWeight = 'bold';
-    wearLabel.style.color = 'white';
-    wearLabel.style.textShadow = '1px 1px 2px rgba(0,0,0,0.7)';
-    wearLabel.style.whiteSpace = 'nowrap';
-    progressBar.appendChild(wearLabel);
-    
-    // Create float marker
-    const marker = this.createElement('div', 'cs2-float-marker');
-    marker.style.position = 'absolute';
-    marker.style.top = '-3px';
-    marker.style.left = `${Math.max(0, Math.min(100, position))}%`;
-    marker.style.width = '3px';
-    marker.style.height = '14px';
-    marker.style.background = '#ff0000';
-    marker.style.borderRadius = '2px';
-    marker.style.transform = 'translateX(-50%)';
-    marker.title = `${floatValue.toFixed(this.settings.floatPrecision)} (${position.toFixed(1)}% within ${wearName} range)`;
-    
-    // Create range labels
-    const leftLabel = this.createElement('div', 'cs2-range-label');
-    leftLabel.textContent = wearMin.toFixed(2);
-    leftLabel.style.position = 'absolute';
-    leftLabel.style.top = '12px';
-    leftLabel.style.left = '0';
-    leftLabel.style.fontSize = '9px';
-    leftLabel.style.color = 'var(--text-muted)';
-    
-    const rightLabel = this.createElement('div', 'cs2-range-label');
-    rightLabel.textContent = wearMax.toFixed(2);
-    rightLabel.style.position = 'absolute';
-    rightLabel.style.top = '12px';
-    rightLabel.style.right = '0';
-    rightLabel.style.fontSize = '9px';
-    rightLabel.style.color = 'var(--text-muted)';
-    
-    // Assemble the component
-    container.style.position = 'relative';
-    container.style.marginTop = '6px';
-    container.appendChild(progressBar);
-    container.appendChild(marker);
-    container.appendChild(leftLabel);
-    container.appendChild(rightLabel);
-    
-    return container;
-  }
-
-  // Utility method for creating elements with classes and text
-  createElement(tagName, className = '', textContent = '') {
-    const element = document.createElement(tagName);
-    if (className) element.className = className;
-    if (textContent) element.textContent = textContent;
-    return element;
-  }
-}
-
-// Initialize when page is ready
-const initFloatChecker = async () => {
-  console.log('Initializing CS2 Float Checker...');
-  
-  // Check if FloatAPI is already loaded
-  if (window.FloatAPI) {
-    console.log('FloatAPI already loaded, initializing...');
-    new SimpleCS2FloatChecker();
-    return;
-  }
-  
-  try {
-    // Load FloatAPI script with better error handling
-    console.log('Loading FloatAPI script...');
-    await loadScript(chrome.runtime.getURL('src/floatAPI.js'));
-    
-    // Wait a bit for FloatAPI to initialize
-    let attempts = 0;
-    while (!window.FloatAPI && attempts < 10) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
-    }
-    
-    if (window.FloatAPI) {
-      console.log('FloatAPI loaded successfully, initializing checker...');
-      new SimpleCS2FloatChecker();
-    } else {
-      console.error('FloatAPI failed to initialize after loading');
-    }
-  } catch (error) {
-    console.error('Failed to load FloatAPI:', error);
-  }
-};
-
-// Helper function to load script with Promise
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    
-    script.onload = () => {
-      console.log('FloatAPI script loaded');
-      resolve();
-    };
-    
-    script.onerror = (error) => {
-      console.error('Failed to load script:', src, error);
-      reject(new Error('Script loading failed'));
-    };
-    
-    document.head.appendChild(script);
-  });
-}
-
-// Wait for DOM and extension context
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(initFloatChecker, 100);
-  });
-} else {
-  setTimeout(initFloatChecker, 100);
-}
+    // Initialize when script loads
+    CS2FloatChecker.init();
+})();
