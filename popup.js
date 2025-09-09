@@ -16,9 +16,8 @@ function loadSettings() {
     updateToggle('highlightLow', settings.highlightLowFloat);
     updateToggle('highlightHigh', settings.highlightHighFloat);
     updateToggle('highlightOwned', settings.highlightOwned);
+    updateToggle('enableFloatFilters', settings.enableFloatFilters);
     
-    document.getElementById('lowThreshold').value = settings.lowFloatThreshold || 0.07;
-    document.getElementById('highThreshold').value = settings.highFloatThreshold || 0.93;
     
     const floatPrecisionElement = document.getElementById('floatPrecision');
     const floatPrecisionSlider = document.getElementById('floatPrecisionSlider');
@@ -60,6 +59,7 @@ function getDefaultSettings() {
     highlightLowFloat: true,
     highlightHighFloat: true,
     highlightOwned: true,
+    enableFloatFilters: true,
     lowFloatThreshold: 0.07,
     highFloatThreshold: 0.93,
     showFloatRank: true,
@@ -337,8 +337,7 @@ function saveSettings() {
     highlightLowFloat: document.getElementById('highlightLow').classList.contains('active'),
     highlightHighFloat: document.getElementById('highlightHigh').classList.contains('active'),
     highlightOwned: document.getElementById('highlightOwned').classList.contains('active'),
-    lowFloatThreshold: parseFloat(document.getElementById('lowThreshold').value) || 0.07,
-    highFloatThreshold: parseFloat(document.getElementById('highThreshold').value) || 0.93,
+    enableFloatFilters: document.getElementById('enableFloatFilters').classList.contains('active'),
     floatPrecision: (() => {
       const sliderValue = parseInt(document.getElementById('floatPrecisionSlider')?.value || document.getElementById('floatPrecision')?.value) || 7;
       return sliderValue === 7 ? 0 : sliderValue;

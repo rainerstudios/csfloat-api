@@ -23,10 +23,9 @@ chrome.runtime.onInstalled.addListener((details) => {
       highlightLowFloat: true,
       highlightHighFloat: true,
       highlightOwned: true,
-      lowFloatThreshold: 0.07,
-      highFloatThreshold: 0.93,
       showPaintSeed: true,
       showFloatRank: true,
+      enableFloatFilters: true,
       enableCaching: true,
       cacheExpiry: 24, // hours
       showTooltips: true,

@@ -174,28 +174,51 @@
         createFallbackAPI() {
             if (!window.FloatAPI) {
                 window.FloatAPI = {
-                    async getFloatData(inspectLink) {
-                        try {
-                            // Check if Chrome extension APIs are available
-                            if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
-                                console.error('Chrome extension APIs not available');
-                                return null;
+                    async getFloatData(inspectLink, retries = 3) {
+                        for (let attempt = 1; attempt <= retries; attempt++) {
+                            try {
+                                // Check if Chrome extension APIs are available
+                                if (typeof chrome === 'undefined' || !chrome.runtime) {
+                                    console.error('Chrome extension APIs not available');
+                                    return null;
+                                }
+                                
+                                // Check if runtime is still valid
+                                if (!chrome.runtime.id) {
+                                    console.error('Extension context invalidated - runtime ID missing');
+                                    return null;
+                                }
+                                
+                                console.log(`📤 Sending fetchFloat message (attempt ${attempt}/${retries}) for:`, inspectLink);
+                                
+                                // Use Chrome extension fetch to bypass CORS
+                                const response = await chrome.runtime.sendMessage({
+                                    action: 'fetchFloat',
+                                    inspectLink: inspectLink
+                                });
+                                
+                                console.log('📥 Received response:', JSON.stringify(response, null, 2));
+                                return response;
+                            } catch (error) {
+                                console.error(`FloatAPI fetch error (attempt ${attempt}/${retries}):`, error);
+                                
+                                // Check if it's an extension context error
+                                if (error.message && error.message.includes('Extension context invalidated')) {
+                                    console.warn('Extension context invalidated - extension may need reload');
+                                    return null;
+                                }
+                                
+                                // If it's the last attempt, return null
+                                if (attempt === retries) {
+                                    console.error('All retry attempts failed');
+                                    return null;
+                                }
+                                
+                                // Wait before retrying (exponential backoff)
+                                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
                             }
-                            
-                            console.log('📤 Sending fetchFloat message for:', inspectLink);
-                            
-                            // Use Chrome extension fetch to bypass CORS
-                            const response = await chrome.runtime.sendMessage({
-                                action: 'fetchFloat',
-                                inspectLink: inspectLink
-                            });
-                            
-                            console.log('📥 Received response:', JSON.stringify(response, null, 2));
-                            return response;
-                        } catch (error) {
-                            console.error('FloatAPI fetch error:', error);
-                            return null;
                         }
+                        return null;
                     }
                 };
             }
@@ -216,6 +239,7 @@
                 highFloatThreshold: 0.93,
                 showPaintSeed: true,
                 showFloatRank: true,
+                enableFloatFilters: true,
                 floatPrecision: 6,
                 cacheExpiry: 24,
                 language: 'en'
@@ -295,11 +319,9 @@
         processMarketPage() {
             this.log('Processing market page...');
             
-            // Initialize currency swapper
-            this.initCurrencySwapper();
             
-            // Initialize float filters
-            this.initFloatFilters();
+            // Initialize float sorter (replaces old float filters)
+            this.initFloatSorter();
             
             // Initialize inventory highlighting if enabled
             this.log('Checking highlightOwned setting:', this.settings.highlightOwned);
@@ -351,36 +373,6 @@
             this.setupMarketObserver();
         },
 
-        async initCurrencySwapper() {
-            try {
-                this.log('Initializing currency swapper...');
-                
-                // Inject the currency swapper script
-                const script = document.createElement('script');
-                script.type = 'module';
-                script.src = chrome.runtime.getURL('src/utils/currencySwapperInjector.js');
-                
-                script.onload = () => {
-                    this.log('✅ Currency swapper script loaded');
-                    
-                    // Initialize the currency swapper
-                    setTimeout(() => {
-                        window.postMessage({
-                            type: 'CS2_INIT_CURRENCY_SWAPPER',
-                            settings: this.settings
-                        }, '*');
-                    }, 100);
-                };
-                
-                script.onerror = (error) => {
-                    this.log('❌ Error loading currency swapper script:', error);
-                };
-                
-                (document.head || document.documentElement).appendChild(script);
-            } catch (error) {
-                this.log('Error initializing currency swapper:', error);
-            }
-        },
 
         async initFloatFilters() {
             try {
@@ -410,6 +402,37 @@
                 (document.head || document.documentElement).appendChild(script);
             } catch (error) {
                 this.log('Error initializing float filters:', error);
+            }
+        },
+
+        async initFloatSorter() {
+            try {
+                this.log('Initializing float sorter...');
+                
+                // Inject the float sorter script
+                const script = document.createElement('script');
+                script.type = 'module';
+                script.src = chrome.runtime.getURL('src/utils/floatSorterInjector.js');
+                
+                script.onload = () => {
+                    this.log('✅ Float sorter script loaded');
+                    
+                    // Initialize the float sorter
+                    setTimeout(() => {
+                        window.postMessage({
+                            type: 'CS2_INIT_FLOAT_SORTER',
+                            settings: this.settings
+                        }, '*');
+                    }, 100);
+                };
+                
+                script.onerror = (error) => {
+                    this.log('❌ Error loading float sorter script:', error);
+                };
+                
+                (document.head || document.documentElement).appendChild(script);
+            } catch (error) {
+                this.log('Error initializing float sorter:', error);
             }
         },
 
