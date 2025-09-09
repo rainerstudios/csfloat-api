@@ -9,7 +9,7 @@
             autoLoad: true,
             showStickers: true,
             showKeychains: true,
-            floatPrecision: 4
+            floatPrecision: 6
         },
         
         log(...args) {
@@ -17,7 +17,7 @@
         },
 
         formatFloat(floatValue) {
-            return floatValue.toFixed(this.settings.floatPrecision);
+            return floatValue.toString();
         },
         
         init() {
@@ -516,7 +516,9 @@
                     }, resolve);
                 });
                 
-                if (response && response.iteminfo && response.iteminfo.floatvalue !== undefined) {
+                if (response && response.error) {
+                    this.log('API error for element:', elementId, response.error);
+                } else if (response && response.iteminfo && response.iteminfo.floatvalue !== undefined) {
                     this.displayFloat(elementId, response.iteminfo);
                 } else {
                     this.log('No float data received for element:', elementId);
@@ -916,11 +918,11 @@
         floatOverlay.innerHTML = `
             <div style="writing-mode: vertical-rl; text-orientation: mixed;">
                 <div style="font-size: 8px; opacity: 0.8;">FLOAT</div>
-                <div style="font-family: 'Courier New', monospace; margin-top: 2px;">${floatData.float.toFixed(4)}</div>
+                <div style="font-family: 'Courier New', monospace; margin-top: 2px;">${floatData.float.toString()}</div>
             </div>
         `;
         
-        floatOverlay.title = `Float: ${floatData.float.toFixed(6)}${floatData.paintSeed ? ` | Seed: ${floatData.paintSeed}` : ''}\nClick to copy`;
+        floatOverlay.title = `Float: ${floatData.float.toString()}${floatData.paintSeed ? ` | Seed: ${floatData.paintSeed}` : ''}\nClick to copy`;
         
         floatOverlay.onmouseover = () => {
             floatOverlay.style.background = 'linear-gradient(90deg, rgba(255, 152, 0, 1) 0%, rgba(255, 152, 0, 0.3) 100%)';
@@ -931,7 +933,7 @@
             floatOverlay.style.transform = 'translateY(-50%)';
         };
         
-        floatOverlay.onclick = () => this.copyToClipboard(floatData.float.toFixed(6));
+        floatOverlay.onclick = () => this.copyToClipboard(floatData.float.toString());
         
         element.appendChild(floatOverlay);
     };
@@ -956,9 +958,9 @@
             z-index: 15;
         `;
         
-        floatDisplay.textContent = `⚡ ${floatData.float.toFixed(6)}`;
+        floatDisplay.textContent = `⚡ ${floatData.float.toString()}`;
         floatDisplay.title = `Click to copy float${floatData.paintSeed ? ` | Seed: ${floatData.paintSeed}` : ''}`;
-        floatDisplay.onclick = () => this.copyToClipboard(floatData.float.toFixed(6));
+        floatDisplay.onclick = () => this.copyToClipboard(floatData.float.toString());
         
         element.appendChild(floatDisplay);
     };
@@ -987,7 +989,7 @@
                 max-width: 250px;
             `;
             
-            const floatValue = floatData.float.toFixed(6);
+            const floatValue = floatData.float.toString();
             const wearName = InventoryFloatChecker.getWearName(floatData.float);
             
             tooltip.innerHTML = `

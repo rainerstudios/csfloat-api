@@ -21,8 +21,13 @@ function loadSettings() {
     document.getElementById('highThreshold').value = settings.highFloatThreshold || 0.93;
     
     const floatPrecisionElement = document.getElementById('floatPrecision');
-    if (floatPrecisionElement) {
-      floatPrecisionElement.value = settings.floatPrecision || 4;
+    const floatPrecisionSlider = document.getElementById('floatPrecisionSlider');
+    if (floatPrecisionElement && floatPrecisionSlider) {
+      const precision = settings.floatPrecision || 0;
+      const sliderValue = precision === 0 ? 7 : precision;
+      floatPrecisionElement.value = sliderValue;
+      floatPrecisionSlider.value = sliderValue;
+      updateSliderLabels(sliderValue);
     }
     
     const cacheExpiryElement = document.getElementById('cacheExpiry');
@@ -59,7 +64,7 @@ function getDefaultSettings() {
     highFloatThreshold: 0.93,
     showFloatRank: true,
     showPaintSeed: true,
-    floatPrecision: 4,
+    floatPrecision: 0,
     cacheExpiry: 24,
     language: 'en'
   };
@@ -88,6 +93,28 @@ function setupEventListeners() {
   
   document.querySelectorAll('select').forEach(select => {
     select.addEventListener('change', saveSettings);
+  });
+
+  // Setup precision slider
+  const precisionSlider = document.getElementById('floatPrecisionSlider');
+  if (precisionSlider) {
+    precisionSlider.addEventListener('input', (e) => {
+      const value = parseInt(e.target.value);
+      document.getElementById('floatPrecision').value = value;
+      updateSliderLabels(value);
+      saveSettings();
+    });
+  }
+
+  // Setup clickable labels
+  document.querySelectorAll('.slider-label').forEach(label => {
+    label.addEventListener('click', () => {
+      const value = parseInt(label.dataset.value);
+      precisionSlider.value = value;
+      document.getElementById('floatPrecision').value = value;
+      updateSliderLabels(value);
+      saveSettings();
+    });
   });
   
   document.getElementById('reloadFloats').addEventListener('click', () => {
@@ -243,8 +270,8 @@ function displayManualResult(floatData) {
   
   chrome.storage.local.get(['settings'], (result) => {
     const settings = result.settings || getDefaultSettings();
-    const precision = settings.floatPrecision || 6;
-    const floatValue = floatData.floatValue?.toFixed(precision) || 'N/A';
+    const precision = settings.floatPrecision || 0;
+    const floatValue = precision === 0 ? floatData.floatValue?.toString() || 'N/A' : floatData.floatValue?.toFixed(precision) || 'N/A';
     const wear = floatData.wear || 'Unknown';
     const paintSeed = floatData.paintSeed || 'N/A';
     const paintIndex = floatData.paintIndex || 'N/A';
@@ -312,7 +339,10 @@ function saveSettings() {
     highlightOwned: document.getElementById('highlightOwned').classList.contains('active'),
     lowFloatThreshold: parseFloat(document.getElementById('lowThreshold').value) || 0.07,
     highFloatThreshold: parseFloat(document.getElementById('highThreshold').value) || 0.93,
-    floatPrecision: parseInt(document.getElementById('floatPrecision')?.value) || 4,
+    floatPrecision: (() => {
+      const sliderValue = parseInt(document.getElementById('floatPrecisionSlider')?.value || document.getElementById('floatPrecision')?.value) || 7;
+      return sliderValue === 7 ? 0 : sliderValue;
+    })(),
     cacheExpiry: parseInt(document.getElementById('cacheExpiry')?.value) || 24,
     language: document.getElementById('language')?.value || 'en',
     showFloatRank: true,
@@ -330,6 +360,16 @@ function saveSettings() {
         });
       }
     });
+  });
+}
+
+function updateSliderLabels(activeValue) {
+  document.querySelectorAll('.slider-label').forEach(label => {
+    if (parseInt(label.dataset.value) === activeValue) {
+      label.classList.add('active');
+    } else {
+      label.classList.remove('active');
+    }
   });
 }
 

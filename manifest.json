@@ -29,10 +29,8 @@
     {
       "matches": [
         "https://steamcommunity.com/market/*",
-        "https://steamcommunity.com/id/*/inventory",
-        "https://steamcommunity.com/id/*/inventory/*",
-        "https://steamcommunity.com/profiles/*/inventory",
-        "https://steamcommunity.com/profiles/*/inventory/*",
+        "https://steamcommunity.com/id/*/inventory*",
+        "https://steamcommunity.com/profiles/*/inventory*",
         "https://steamcommunity.com/tradeoffer/*",
         "https://steamcommunity.com/id/*/tradehistory",
         "https://steamcommunity.com/profiles/*/tradehistory"
@@ -54,7 +52,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js", "src/utils/cache.js", "src/utils/inventoryHighlight.js"],
+      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js", "src/utils/cache.js", "src/utils/inventoryHighlight.js", "src/utils/inventoryHighlightInjector.js", "src/utils/currencySwapper.js", "src/utils/currencySwapperInjector.js", "src/utils/floatFilters.js", "src/utils/floatFiltersInjector.js"],
       "matches": ["https://steamcommunity.com/*"]
     }
   ]

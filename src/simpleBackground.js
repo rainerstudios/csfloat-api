@@ -22,6 +22,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       showKeychains: true,
       highlightLowFloat: true,
       highlightHighFloat: true,
+      highlightOwned: true,
       lowFloatThreshold: 0.07,
       highFloatThreshold: 0.93,
       showPaintSeed: true,
@@ -29,7 +30,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       enableCaching: true,
       cacheExpiry: 24, // hours
       showTooltips: true,
-      floatPrecision: 4,
+      floatPrecision: 0,
       language: 'en'
     },
     stats: {
@@ -64,6 +65,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         console.log('Fetching float for:', request.inspectLink);
         
+        // Basic validation of inspect link
+        if (!request.inspectLink) {
+          console.error('No inspect link provided');
+          sendResponse({ error: 'No inspect link provided' });
+          return;
+        }
+        
         // Check cache first (24-hour expiration like competitor)
         const cacheKey = request.inspectLink;
         const cachedData = await getCachedFloatData(cacheKey);
@@ -75,43 +83,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
         
-        // Add delay to prevent rate limiting
-        const delay = Math.random() * 2000 + 1000; // Random delay 1-3 seconds
-        await new Promise(resolve => setTimeout(resolve, delay));
-        
-        // Use production API as primary endpoint
-        const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
-        console.log('Using production API:', apiUrl);
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'CS2FloatChecker/1.6.0',
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
+        // Use production API (following CSFloat's approach)
+        try {
+          const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
+          console.log('Fetching from API:', apiUrl);
+          
+          const response = await fetch(apiUrl);
           const data = await response.json();
-          console.log('API response received:', data);
           
-          // Cache the successful response
-          await cacheFloatData(cacheKey, data);
-          
-          // Update API call stats
-          await updateStats({ apiCalls: 1, itemsChecked: 1 });
-          
-          sendResponse(data);
-        } else {
-          console.error('API response not ok:', response.status);
-          if (response.status === 400) {
-            console.log('Rate limited, will retry this item later');
+          if (response.ok) {
+            console.log('API response received:', data);
+            
+            // Cache the successful response
+            await cacheFloatData(cacheKey, data);
+            
+            // Update API call stats
+            await updateStats({ apiCalls: 1, itemsChecked: 1 });
+            
+            sendResponse(data);
+          } else {
+            // CSFloat style error handling - throw the API's error message
+            console.error('API error:', data.error || `HTTP ${response.status}`);
+            sendResponse({ error: data.error || `API returned status ${response.status}` });
           }
-          sendResponse(null);
+        } catch (error) {
+          console.error('Network error:', error.message);
+          sendResponse({ error: error.message });
         }
+        
       } catch (error) {
         console.error('Background fetch error:', error);
-        sendResponse(null);
+        sendResponse({ error: error.message });
       }
     })();
     return true; // Keep message channel open for async response

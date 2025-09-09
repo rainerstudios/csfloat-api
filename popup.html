@@ -338,6 +338,85 @@
       color: #e0e0e0;
       font-weight: 500;
     }
+
+    /* Precision Slider Styles */
+    .slider-container {
+      position: relative;
+      margin: 8px 0 16px 0;
+    }
+
+    .precision-slider {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: #3a3a3a;
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      cursor: pointer;
+    }
+
+    .precision-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #22c55e;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .precision-slider::-webkit-slider-thumb:hover {
+      background: #00e676;
+      transform: scale(1.1);
+    }
+
+    .precision-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #22c55e;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .precision-slider::-moz-range-thumb:hover {
+      background: #00e676;
+      transform: scale(1.1);
+    }
+
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding: 0 10px;
+    }
+
+    .slider-label {
+      font-size: 11px;
+      color: #888;
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .slider-label.active {
+      color: #22c55e;
+      background: rgba(34, 197, 94, 0.1);
+      transform: scale(1.05);
+    }
+
+    .precision-input {
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
@@ -439,7 +518,18 @@
         
         <div class="input-group">
           <label class="input-label">Float Precision (Decimal Places)</label>
-          <input type="number" class="input-field" id="floatPrecision" min="2" max="6" step="1" value="4" placeholder="4">
+          <div class="slider-container">
+            <input type="range" class="precision-slider" id="floatPrecisionSlider" min="2" max="7" step="1" value="7">
+            <div class="slider-labels">
+              <span class="slider-label" data-value="2">0.00</span>
+              <span class="slider-label" data-value="3">0.000</span>
+              <span class="slider-label" data-value="4">0.0000</span>
+              <span class="slider-label" data-value="5">0.00000</span>
+              <span class="slider-label" data-value="6">0.000000</span>
+              <span class="slider-label active" data-value="7"></span>
+            </div>
+          </div>
+          <input type="number" class="input-field precision-input" id="floatPrecision" min="2" max="7" step="1" value="7" style="display: none;">
         </div>
         
         <div class="input-group">

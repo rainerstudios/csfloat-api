@@ -24,29 +24,138 @@ export class InventoryHighlighter {
         this.log('Initializing inventory highlighter...');
         await this.loadSettings();
         
+        // Check if we're on inventory page to collect items
+        if (this.isInventoryPage()) {
+            this.log('On inventory page - collecting owned items...');
+            this.collectInventoryItems();
+        }
+        
         if (this.settings.highlightOwned && this.isMarketPage()) {
             await this.loadUserInventory();
             this.highlightOwnedItems();
         }
     }
-
-    async loadSettings() {
-        try {
-            const result = await chrome.storage.local.get(['settings']);
-            if (result.settings) {
-                this.settings = { ...this.settings, ...result.settings };
+    
+    isInventoryPage() {
+        const url = window.location.href;
+        return url.includes('/inventory');
+    }
+    
+    collectInventoryItems() {
+        this.log('Starting inventory collection...');
+        
+        // Function to extract item names when user hovers/clicks items
+        const extractFromItemInfo = () => {
+            // Check both iteminfo panels
+            for (let i = 0; i <= 1; i++) {
+                const nameElement = document.querySelector(`#iteminfo${i}_item_name`);
+                const descriptorElement = document.querySelector(`#iteminfo${i}_item_descriptors`);
+                
+                if (nameElement && nameElement.textContent) {
+                    let itemName = nameElement.textContent.trim();
+                    
+                    // Skip if it's just "Counter-Strike 2"
+                    if (itemName === 'Counter-Strike 2') continue;
+                    
+                    // Try to get wear condition from descriptors
+                    if (descriptorElement) {
+                        const descriptorText = descriptorElement.textContent;
+                        // Look for exterior conditions
+                        const exteriorMatch = descriptorText.match(/Exterior:\s*(Factory New|Minimal Wear|Field-Tested|Well-Worn|Battle-Scarred)/i);
+                        if (exteriorMatch) {
+                            const condition = exteriorMatch[1];
+                            itemName = `${itemName} (${condition})`;
+                            this.log(`Found condition: ${condition}`);
+                        }
+                    }
+                    
+                    this.ownedItems.add(itemName);
+                    this.log(`Added item: "${itemName}"`);
+                    
+                    // Save immediately
+                    const itemsArray = Array.from(this.ownedItems);
+                    localStorage.setItem('cs2_owned_items', JSON.stringify(itemsArray));
+                    this.log(`Saved ${itemsArray.length} items to localStorage`);
+                }
             }
-        } catch (error) {
-            this.log('Error loading settings:', error);
+        };
+        
+        // Watch for clicks on inventory items
+        document.addEventListener('click', (event) => {
+            const clickedItem = event.target.closest('.item.app730.context2');
+            if (clickedItem) {
+                this.log('Clicked CS2 item');
+                setTimeout(extractFromItemInfo, 100);
+            }
+        });
+        
+        // Watch for hover
+        document.addEventListener('mouseover', (event) => {
+            const hoveredItem = event.target.closest('.item.app730.context2');
+            if (hoveredItem) {
+                setTimeout(extractFromItemInfo, 100);
+            }
+        });
+        
+        // Check if items already visible
+        const items = document.querySelectorAll('.item.app730.context2');
+        this.log(`Found ${items.length} CS2 items in inventory`);
+        
+        // Try to extract from any visible item info panels
+        extractFromItemInfo();
+        
+        // Also try g_ActiveInventory if available
+        if (typeof g_ActiveInventory !== 'undefined' && g_ActiveInventory.m_rgAssets) {
+            this.log('Found g_ActiveInventory, extracting item names...');
+            
+            for (const [assetId, asset] of Object.entries(g_ActiveInventory.m_rgAssets)) {
+                if (asset.appid === 730) {
+                    const description = asset.description;
+                    if (description && description.name) {
+                        this.ownedItems.add(description.name);
+                        this.log(`Added from g_ActiveInventory: "${description.name}"`);
+                    }
+                }
+            }
+            
+            if (this.ownedItems.size > 0) {
+                const itemsArray = Array.from(this.ownedItems);
+                localStorage.setItem('cs2_owned_items', JSON.stringify(itemsArray));
+                this.log(`Saved ${itemsArray.length} items from g_ActiveInventory`);
+            }
         }
     }
 
+    async loadSettings() {
+        // Settings will be passed from content script via postMessage
+        // No direct chrome.storage access in injected context
+        this.log('Settings will be provided by content script');
+    }
+
     isMarketPage() {
-        return window.location.href.includes('/market/');
+        const url = window.location.href;
+        return url.includes('/market/') || 
+               url.includes('/market/search') || 
+               url.includes('/market/listings/');
     }
 
     async loadUserInventory() {
-        // Check cache first
+        this.log('Loading user inventory...');
+        
+        // First try to load from localStorage (saved from inventory page)
+        try {
+            const savedItems = localStorage.getItem('cs2_owned_items');
+            if (savedItems) {
+                const itemsArray = JSON.parse(savedItems);
+                this.log(`Loaded ${itemsArray.length} items from localStorage`);
+                itemsArray.forEach(item => this.ownedItems.add(item));
+                return;
+            }
+        } catch (error) {
+            this.log('Error loading from localStorage:', error);
+        }
+        
+        // Check cache
         const now = Date.now();
         if (this.cache.inventory && (now - this.cache.lastFetch) < this.cache.expiry) {
             this.log('Using cached inventory data');
@@ -54,16 +163,9 @@ export class InventoryHighlighter {
             return;
         }
 
-        this.log('Fetching user inventory...');
+        this.log('No saved inventory found');
         
         try {
-            // Get Steam ID from current page or profile
-            const steamId = this.extractSteamId();
-            if (!steamId) {
-                this.log('Could not determine Steam ID');
-                return;
-            }
-
             // Try to access Steam's internal inventory API if available
             if (window.g_rgAppContextData && window.g_rgAppContextData['730']) {
                 this.log('Using Steam internal inventory API');
@@ -73,9 +175,6 @@ export class InventoryHighlighter {
                 this.cache.lastFetch = now;
                 return;
             }
-
-            // Fallback: Try to get from Steam Community API
-            await this.fetchInventoryFromAPI(steamId);
         } catch (error) {
             this.log('Error loading inventory:', error);
         }
@@ -141,18 +240,15 @@ export class InventoryHighlighter {
         }
 
         this.log(`Processed ${this.ownedItems.size} owned items`);
+        this.log('First 10 owned items:', Array.from(this.ownedItems).slice(0, 10));
     }
 
     normalizeItemName(name) {
         if (!name) return null;
         
-        // Remove quality indicators, StatTrak, etc. for comparison
-        return name
-            .replace(/^★\s*/, '') // Remove star
-            .replace(/^StatTrak™\s*/, '') // Remove StatTrak
-            .replace(/^Souvenir\s*/, '') // Remove Souvenir
-            .replace(/\s*\([^)]+\)$/, '') // Remove condition in parentheses
-            .trim();
+        // For now, just trim the name - keep full name including condition
+        // We'll do more sophisticated matching later
+        return name.trim();
     }
 
     highlightOwnedItems() {
@@ -162,20 +258,56 @@ export class InventoryHighlighter {
         }
 
         this.log('Starting to highlight owned items...');
+        this.log(`Have ${this.ownedItems.size} owned items in memory`);
         
-        // Find all market listing items
-        const marketItems = document.querySelectorAll('.market_listing_row, .market_recent_listing_row');
+        // Find all market listing items (both regular listings and search results)
+        const selectors = [
+            '.market_listing_row',
+            '.market_recent_listing_row',
+            '#searchResults .market_listing_row',
+            '#searchResultsRows .market_listing_row',
+            '.market_search_results .market_listing_row'
+        ];
+        
+        let marketItems = [];
+        selectors.forEach(selector => {
+            const found = document.querySelectorAll(selector);
+            this.log(`Selector '${selector}' found ${found.length} items`);
+            found.forEach(item => {
+                if (!marketItems.includes(item)) {
+                    marketItems.push(item);
+                }
+            });
+        });
+        
+        this.log(`Total market items found: ${marketItems.length}`);
+        
         let highlightedCount = 0;
 
-        marketItems.forEach(item => {
-            const nameElement = item.querySelector('.market_listing_item_name');
+        marketItems.forEach((item, index) => {
+            const nameElement = item.querySelector('.market_listing_item_name, .market_listing_item_name_link');
             if (nameElement) {
-                const itemName = this.normalizeItemName(nameElement.textContent.trim());
+                const rawName = nameElement.textContent.trim();
+                const itemName = this.normalizeItemName(rawName);
                 
-                if (itemName && this.ownedItems.has(itemName)) {
+                this.log(`Item ${index + 1}: Raw="${rawName}", Normalized="${itemName}"`);
+                
+                // Check for exact match first (with condition)
+                let isOwned = this.ownedItems.has(itemName);
+                
+                if (isOwned) {
+                    this.log(`Exact match found for: "${itemName}"`);
+                }
+                
+                if (isOwned) {
+                    this.log(`MATCH FOUND: "${itemName}" is owned!`);
                     this.addOwnedHighlight(item);
                     highlightedCount++;
+                } else {
+                    this.log(`No match for: "${itemName}"`);
                 }
+            } else {
+                this.log(`Item ${index + 1}: No name element found`);
             }
         });
 
@@ -189,7 +321,7 @@ export class InventoryHighlighter {
         // Add visual highlighting
         itemElement.style.position = 'relative';
         
-        // Create highlight overlay
+        // Create highlight overlay with green color
         const highlight = document.createElement('div');
         highlight.className = 'cs2-owned-highlight';
         highlight.style.cssText = `
@@ -198,29 +330,29 @@ export class InventoryHighlighter {
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(45deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 215, 0, 0.05) 100%);
-            border: 2px solid rgba(255, 215, 0, 0.4);
+            background: linear-gradient(45deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+            border: 2px solid rgba(76, 175, 80, 0.5);
             border-radius: 4px;
             pointer-events: none;
             z-index: 1;
         `;
         
-        // Add "OWNED" badge
+        // Add "OWNED" badge in bottom right
         const badge = document.createElement('div');
         badge.className = 'cs2-owned-badge';
         badge.textContent = 'OWNED';
         badge.style.cssText = `
             position: absolute;
-            top: 5px;
+            bottom: 5px;
             right: 5px;
-            background: rgba(255, 215, 0, 0.9);
-            color: #000;
+            background: rgba(76, 175, 80, 0.9);
+            color: #fff;
             font-size: 10px;
             font-weight: bold;
             padding: 2px 6px;
             border-radius: 3px;
             z-index: 2;
-            text-shadow: none;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         `;
         
         itemElement.appendChild(highlight);

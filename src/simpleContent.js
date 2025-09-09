@@ -211,11 +211,12 @@
                 showKeychains: true,
                 highlightLowFloat: true,
                 highlightHighFloat: true,
+                highlightOwned: true,
                 lowFloatThreshold: 0.07,
                 highFloatThreshold: 0.93,
                 showPaintSeed: true,
                 showFloatRank: true,
-                floatPrecision: 4,
+                floatPrecision: 6,
                 cacheExpiry: 24,
                 language: 'en'
             };
@@ -294,7 +295,14 @@
         processMarketPage() {
             this.log('Processing market page...');
             
+            // Initialize currency swapper
+            this.initCurrencySwapper();
+            
+            // Initialize float filters
+            this.initFloatFilters();
+            
             // Initialize inventory highlighting if enabled
+            this.log('Checking highlightOwned setting:', this.settings.highlightOwned);
             if (this.settings.highlightOwned) {
                 this.initInventoryHighlighting();
             }
@@ -343,28 +351,86 @@
             this.setupMarketObserver();
         },
 
+        async initCurrencySwapper() {
+            try {
+                this.log('Initializing currency swapper...');
+                
+                // Inject the currency swapper script
+                const script = document.createElement('script');
+                script.type = 'module';
+                script.src = chrome.runtime.getURL('src/utils/currencySwapperInjector.js');
+                
+                script.onload = () => {
+                    this.log('✅ Currency swapper script loaded');
+                    
+                    // Initialize the currency swapper
+                    setTimeout(() => {
+                        window.postMessage({
+                            type: 'CS2_INIT_CURRENCY_SWAPPER',
+                            settings: this.settings
+                        }, '*');
+                    }, 100);
+                };
+                
+                script.onerror = (error) => {
+                    this.log('❌ Error loading currency swapper script:', error);
+                };
+                
+                (document.head || document.documentElement).appendChild(script);
+            } catch (error) {
+                this.log('Error initializing currency swapper:', error);
+            }
+        },
+
+        async initFloatFilters() {
+            try {
+                this.log('Initializing float filters...');
+                
+                // Inject the float filters script
+                const script = document.createElement('script');
+                script.type = 'module';
+                script.src = chrome.runtime.getURL('src/utils/floatFiltersInjector.js');
+                
+                script.onload = () => {
+                    this.log('✅ Float filters script loaded');
+                    
+                    // Initialize the float filters
+                    setTimeout(() => {
+                        window.postMessage({
+                            type: 'CS2_INIT_FLOAT_FILTERS',
+                            settings: this.settings
+                        }, '*');
+                    }, 100);
+                };
+                
+                script.onerror = (error) => {
+                    this.log('❌ Error loading float filters script:', error);
+                };
+                
+                (document.head || document.documentElement).appendChild(script);
+            } catch (error) {
+                this.log('Error initializing float filters:', error);
+            }
+        },
+
         async initInventoryHighlighting() {
             try {
                 this.log('Initializing inventory highlighting...');
                 
-                // Inject the inventory highlighter script
+                // Inject the inventory highlighter script using src attribute instead of inline
                 const script = document.createElement('script');
                 script.type = 'module';
-                script.textContent = `
-                    import { inventoryHighlighter } from '${chrome.runtime.getURL('src/utils/inventoryHighlight.js')}';
-                    
-                    // Initialize highlighter
-                    inventoryHighlighter.init().catch(console.error);
-                    
-                    // Listen for settings updates
-                    window.addEventListener('message', (event) => {
-                        if (event.data.type === 'CS2_SETTINGS_UPDATE' && event.data.settings) {
-                            inventoryHighlighter.updateSettings(event.data.settings);
-                        }
-                    });
-                `;
+                script.src = chrome.runtime.getURL('src/utils/inventoryHighlightInjector.js');
                 
                 (document.head || document.documentElement).appendChild(script);
+                
+                // Send settings to the injected script
+                setTimeout(() => {
+                    window.postMessage({
+                        type: 'CS2_SETTINGS_UPDATE',
+                        settings: this.settings
+                    }, '*');
+                }, 100);
             } catch (error) {
                 this.log('Error initializing inventory highlighting:', error);
             }
@@ -372,6 +438,10 @@
 
         processInventoryPage() {
             this.log('Processing inventory page...');
+            
+            // Initialize inventory highlighting to collect owned items
+            this.initInventoryHighlighting();
+            
             this.log('Injecting Steam inventory API script...');
             
             // Inject the inventory script that uses Steam's internal APIs
@@ -664,8 +734,12 @@
                 return container;
             }
             
-            // Format like competitor: "Float: 0.14642542600631714"
-            const displayFloat = parseFloat(floatValue).toFixed(this.settings.floatPrecision || 6);
+            // Use user's precision setting
+            const precision = this.settings.floatPrecision || 0;
+            const displayFloat = precision === 0 ? parseFloat(floatValue).toString() : parseFloat(floatValue).toFixed(precision);
+            
+            // Add data attribute for float filters
+            container.dataset.floatValue = floatValue;
             
             // Create professional display matching competitor format
             if (type === 'inventory') {
@@ -841,7 +915,8 @@
                 return;
             }
             
-            const displayFloat = parseFloat(floatValue).toFixed(this.settings.floatPrecision || 6);
+            const precision = this.settings.floatPrecision || 0;
+            const displayFloat = precision === 0 ? parseFloat(floatValue).toString() : parseFloat(floatValue).toFixed(precision);
             const wearName = this.getWearName(floatValue);
             
             tooltip.innerHTML = `
