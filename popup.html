@@ -372,6 +372,20 @@
         </div>
         
         <div class="setting-item">
+          <span class="setting-label">Enable on Market</span>
+          <div class="toggle active" id="enableMarket">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <span class="setting-label">Enable on Inventory</span>
+          <div class="toggle active" id="enableInventory">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="setting-item">
           <span class="setting-label">Auto-load Floats</span>
           <div class="toggle active" id="autoLoad">
             <div class="toggle-slider"></div>
@@ -381,6 +395,13 @@
         <div class="setting-item">
           <span class="setting-label">Show Stickers</span>
           <div class="toggle active" id="showStickers">
+            <div class="toggle-slider"></div>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <span class="setting-label">Show Keychains</span>
+          <div class="toggle active" id="showKeychains">
             <div class="toggle-slider"></div>
           </div>
         </div>
@@ -411,7 +432,28 @@
         
         <div class="input-group">
           <label class="input-label">Float Precision (Decimal Places)</label>
-          <input type="number" class="input-field" id="floatPrecision" min="1" max="16" step="1" value="6" placeholder="6">
+          <input type="number" class="input-field" id="floatPrecision" min="2" max="6" step="1" value="4" placeholder="4">
+        </div>
+        
+        <div class="input-group">
+          <label class="input-label">Cache Expiry (Hours)</label>
+          <input type="number" class="input-field" id="cacheExpiry" min="1" max="168" step="1" value="24" placeholder="24">
+        </div>
+        
+        <div class="input-group">
+          <label class="input-label">Language</label>
+          <select class="input-field" id="language">
+            <option value="en">English</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="it">Italiano</option>
+            <option value="pt">Português</option>
+            <option value="ru">Русский</option>
+            <option value="zh">中文</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+          </select>
         </div>
       </div>
       

@@ -11,7 +11,8 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://steamcommunity.com/*",
@@ -53,7 +54,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js"],
+      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js", "src/utils/cache.js"],
       "matches": ["https://steamcommunity.com/*"]
     }
   ]

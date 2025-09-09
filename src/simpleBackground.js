@@ -15,8 +15,11 @@ chrome.runtime.onInstalled.addListener((details) => {
   // Set enhanced default settings
   chrome.storage.local.set({
     settings: {
+      enableMarket: true,
+      enableInventory: true,
       autoLoad: true,
       showStickers: true,
+      showKeychains: true,
       highlightLowFloat: true,
       highlightHighFloat: true,
       lowFloatThreshold: 0.07,
@@ -24,9 +27,10 @@ chrome.runtime.onInstalled.addListener((details) => {
       showPaintSeed: true,
       showFloatRank: true,
       enableCaching: true,
-      cacheExpiration: 24, // hours
+      cacheExpiry: 24, // hours
       showTooltips: true,
-      floatPrecision: 6
+      floatPrecision: 4,
+      language: 'en'
     },
     stats: {
       itemsChecked: 0,

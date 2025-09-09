@@ -8,8 +8,11 @@ function loadSettings() {
   chrome.storage.local.get(['settings'], (result) => {
     const settings = result.settings || getDefaultSettings();
     
+    updateToggle('enableMarket', settings.enableMarket);
+    updateToggle('enableInventory', settings.enableInventory);
     updateToggle('autoLoad', settings.autoLoad);
     updateToggle('showStickers', settings.showStickers);
+    updateToggle('showKeychains', settings.showKeychains);
     updateToggle('highlightLow', settings.highlightLowFloat);
     updateToggle('highlightHigh', settings.highlightHighFloat);
     
@@ -18,7 +21,17 @@ function loadSettings() {
     
     const floatPrecisionElement = document.getElementById('floatPrecision');
     if (floatPrecisionElement) {
-      floatPrecisionElement.value = settings.floatPrecision || 6;
+      floatPrecisionElement.value = settings.floatPrecision || 4;
+    }
+    
+    const cacheExpiryElement = document.getElementById('cacheExpiry');
+    if (cacheExpiryElement) {
+      cacheExpiryElement.value = settings.cacheExpiry || 24;
+    }
+    
+    const languageElement = document.getElementById('language');
+    if (languageElement) {
+      languageElement.value = settings.language || 'en';
     }
   });
 }
@@ -33,15 +46,20 @@ function loadStats() {
 
 function getDefaultSettings() {
   return {
+    enableMarket: true,
+    enableInventory: true,
     autoLoad: true,
     showStickers: true,
+    showKeychains: true,
     highlightLowFloat: true,
     highlightHighFloat: true,
     lowFloatThreshold: 0.07,
     highFloatThreshold: 0.93,
     showFloatRank: true,
     showPaintSeed: true,
-    floatPrecision: 6
+    floatPrecision: 4,
+    cacheExpiry: 24,
+    language: 'en'
   };
 }
 
@@ -64,6 +82,10 @@ function setupEventListeners() {
   
   document.querySelectorAll('input[type="number"]').forEach(input => {
     input.addEventListener('change', saveSettings);
+  });
+  
+  document.querySelectorAll('select').forEach(select => {
+    select.addEventListener('change', saveSettings);
   });
   
   document.getElementById('reloadFloats').addEventListener('click', () => {
@@ -278,13 +300,18 @@ function showNotification(message, type = 'info') {
 
 function saveSettings() {
   const settings = {
+    enableMarket: document.getElementById('enableMarket').classList.contains('active'),
+    enableInventory: document.getElementById('enableInventory').classList.contains('active'),
     autoLoad: document.getElementById('autoLoad').classList.contains('active'),
     showStickers: document.getElementById('showStickers').classList.contains('active'),
+    showKeychains: document.getElementById('showKeychains').classList.contains('active'),
     highlightLowFloat: document.getElementById('highlightLow').classList.contains('active'),
     highlightHighFloat: document.getElementById('highlightHigh').classList.contains('active'),
     lowFloatThreshold: parseFloat(document.getElementById('lowThreshold').value) || 0.07,
     highFloatThreshold: parseFloat(document.getElementById('highThreshold').value) || 0.93,
-    floatPrecision: parseInt(document.getElementById('floatPrecision')?.value) || 6,
+    floatPrecision: parseInt(document.getElementById('floatPrecision')?.value) || 4,
+    cacheExpiry: parseInt(document.getElementById('cacheExpiry')?.value) || 24,
+    language: document.getElementById('language')?.value || 'en',
     showFloatRank: true,
     showPaintSeed: true
   };

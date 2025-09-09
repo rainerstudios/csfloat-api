@@ -143,15 +143,20 @@
 
         getDefaultSettings() {
             return {
+                enableMarket: true,
+                enableInventory: true,
                 autoLoad: true,
                 showStickers: true,
+                showKeychains: true,
                 highlightLowFloat: true,
                 highlightHighFloat: true,
                 lowFloatThreshold: 0.07,
                 highFloatThreshold: 0.93,
                 showPaintSeed: true,
                 showFloatRank: true,
-                floatPrecision: 6
+                floatPrecision: 4,
+                cacheExpiry: 24,
+                language: 'en'
             };
         },
 
@@ -166,13 +171,17 @@
                 this.injectStyles();
                 this.log('Styles injected');
                 
-                // Start processing based on page type
-                if (this.isMarketPage()) {
-                    this.log('Market page detected - URL contains /market/');
+                // Start processing based on page type and settings
+                if (this.isMarketPage() && this.settings.enableMarket) {
+                    this.log('Market page detected and enabled - URL contains /market/');
                     this.processMarketPage();
-                } else if (this.isInventoryPage()) {
-                    this.log('Inventory page detected - URL contains /inventory/');
+                } else if (this.isInventoryPage() && this.settings.enableInventory) {
+                    this.log('Inventory page detected and enabled - URL contains /inventory/');
                     this.processInventoryPage();
+                } else if (this.isMarketPage() && !this.settings.enableMarket) {
+                    this.log('Market page detected but disabled in settings');
+                } else if (this.isInventoryPage() && !this.settings.enableInventory) {
+                    this.log('Inventory page detected but disabled in settings');
                 } else {
                     this.log('Unknown page type, trying generic processing');
                     this.log('Current pathname:', window.location.pathname);
