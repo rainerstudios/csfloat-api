@@ -15,6 +15,7 @@ function loadSettings() {
     updateToggle('showKeychains', settings.showKeychains);
     updateToggle('highlightLow', settings.highlightLowFloat);
     updateToggle('highlightHigh', settings.highlightHighFloat);
+    updateToggle('highlightOwned', settings.highlightOwned);
     
     document.getElementById('lowThreshold').value = settings.lowFloatThreshold || 0.07;
     document.getElementById('highThreshold').value = settings.highFloatThreshold || 0.93;
@@ -53,6 +54,7 @@ function getDefaultSettings() {
     showKeychains: true,
     highlightLowFloat: true,
     highlightHighFloat: true,
+    highlightOwned: true,
     lowFloatThreshold: 0.07,
     highFloatThreshold: 0.93,
     showFloatRank: true,
@@ -307,6 +309,7 @@ function saveSettings() {
     showKeychains: document.getElementById('showKeychains').classList.contains('active'),
     highlightLowFloat: document.getElementById('highlightLow').classList.contains('active'),
     highlightHighFloat: document.getElementById('highlightHigh').classList.contains('active'),
+    highlightOwned: document.getElementById('highlightOwned').classList.contains('active'),
     lowFloatThreshold: parseFloat(document.getElementById('lowThreshold').value) || 0.07,
     highFloatThreshold: parseFloat(document.getElementById('highThreshold').value) || 0.93,
     floatPrecision: parseInt(document.getElementById('floatPrecision')?.value) || 4,

@@ -54,7 +54,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js", "src/utils/cache.js"],
+      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js", "src/utils/cache.js", "src/utils/inventoryHighlight.js"],
       "matches": ["https://steamcommunity.com/*"]
     }
   ]

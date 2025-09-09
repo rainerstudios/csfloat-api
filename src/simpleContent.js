@@ -94,6 +94,12 @@
         restartWithNewSettings() {
             this.log('🔄 Restarting with new settings...');
             
+            // Send settings update to injected scripts
+            window.postMessage({
+                type: 'CS2_SETTINGS_UPDATE',
+                settings: this.settings
+            }, window.location.origin);
+            
             // Clear processed items to allow reprocessing
             this.processedItems.clear();
             
@@ -288,6 +294,11 @@
         processMarketPage() {
             this.log('Processing market page...');
             
+            // Initialize inventory highlighting if enabled
+            if (this.settings.highlightOwned) {
+                this.initInventoryHighlighting();
+            }
+            
             // Wait for page to load then process
             setTimeout(() => {
                 // Look for market listings with more specific selectors
@@ -330,6 +341,33 @@
             
             // Set up observer for dynamic content
             this.setupMarketObserver();
+        },
+
+        async initInventoryHighlighting() {
+            try {
+                this.log('Initializing inventory highlighting...');
+                
+                // Inject the inventory highlighter script
+                const script = document.createElement('script');
+                script.type = 'module';
+                script.textContent = `
+                    import { inventoryHighlighter } from '${chrome.runtime.getURL('src/utils/inventoryHighlight.js')}';
+                    
+                    // Initialize highlighter
+                    inventoryHighlighter.init().catch(console.error);
+                    
+                    // Listen for settings updates
+                    window.addEventListener('message', (event) => {
+                        if (event.data.type === 'CS2_SETTINGS_UPDATE' && event.data.settings) {
+                            inventoryHighlighter.updateSettings(event.data.settings);
+                        }
+                    });
+                `;
+                
+                (document.head || document.documentElement).appendChild(script);
+            } catch (error) {
+                this.log('Error initializing inventory highlighting:', error);
+            }
         },
 
         processInventoryPage() {
