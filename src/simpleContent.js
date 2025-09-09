@@ -24,6 +24,22 @@
         setupMessageListener() {
             this.log('Setting up message listener for injected script communication...');
             
+            // Listen for messages from popup/background
+            chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+                if (request.action === 'updateSettings') {
+                    this.log('🔄 Received settings update:', request.settings);
+                    this.settings = { ...this.getDefaultSettings(), ...request.settings };
+                    
+                    // Restart processing based on new settings
+                    this.restartWithNewSettings();
+                    sendResponse({ success: true });
+                } else if (request.action === 'reloadFloats') {
+                    this.log('🔄 Received reload floats request');
+                    this.reloadFloats();
+                    sendResponse({ success: true });
+                }
+            });
+            
             window.addEventListener('message', async (event) => {
                 // Only accept messages from same origin
                 if (event.origin !== window.location.origin) {
@@ -73,6 +89,45 @@
             });
             
             this.log('✅ Message listener setup complete');
+        },
+
+        restartWithNewSettings() {
+            this.log('🔄 Restarting with new settings...');
+            
+            // Clear processed items to allow reprocessing
+            this.processedItems.clear();
+            
+            // Re-run setup with new settings
+            if (this.isMarketPage() && this.settings.enableMarket) {
+                this.log('Market page enabled - reprocessing...');
+                this.processMarketPage();
+            } else if (this.isInventoryPage() && this.settings.enableInventory) {
+                this.log('Inventory page enabled - reprocessing...');
+                this.processInventoryPage();
+            } else if (this.isMarketPage() && !this.settings.enableMarket) {
+                this.log('Market page disabled - removing float displays...');
+                this.removeAllFloats();
+            } else if (this.isInventoryPage() && !this.settings.enableInventory) {
+                this.log('Inventory page disabled - removing float displays...');
+                this.removeAllFloats();
+            }
+        },
+
+        reloadFloats() {
+            this.log('🔄 Reloading all floats...');
+            this.processedItems.clear();
+            if (this.isMarketPage() && this.settings.enableMarket) {
+                this.processMarketPage();
+            } else if (this.isInventoryPage() && this.settings.enableInventory) {
+                this.processInventoryPage();
+            }
+        },
+
+        removeAllFloats() {
+            // Remove all float displays from the page
+            const floatElements = document.querySelectorAll('[data-cs2float-display], .cs2-float-value, .cs2-float-tooltip');
+            floatElements.forEach(el => el.remove());
+            this.log(`Removed ${floatElements.length} float displays`);
         },
 
         init() {
@@ -306,7 +361,14 @@
                 
                 script.onload = () => {
                     this.log('✅ Inventory script injected successfully');
-                    // Visual confirmation removed for production
+                    
+                    // Pass settings to the injected script
+                    setTimeout(() => {
+                        window.postMessage({
+                            type: 'CS2_FLOAT_SETTINGS',
+                            settings: this.settings
+                        }, window.location.origin);
+                    }, 100);
                 };
                 
                 script.onerror = (error) => {

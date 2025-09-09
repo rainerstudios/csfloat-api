@@ -123,16 +123,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Advanced caching system - better than competitor's localStorage approach
 async function getCachedFloatData(inspectLink) {
   try {
-    const result = await chrome.storage.local.get([`float_${inspectLink}`]);
+    const result = await chrome.storage.local.get([`float_${inspectLink}`, 'settings']);
     const cached = result[`float_${inspectLink}`];
+    const settings = result.settings || { cacheExpiry: 24 };
     
     if (cached) {
       const now = Date.now();
       const cacheTime = new Date(cached.timestamp).getTime();
       const hoursDiff = (now - cacheTime) / (1000 * 60 * 60);
       
-      // 24-hour cache expiration (same as competitor)
-      if (hoursDiff < 24) {
+      // Use user's cache expiry setting
+      if (hoursDiff < settings.cacheExpiry) {
         console.log(`Cache hit for ${inspectLink.substring(0, 50)}... (${hoursDiff.toFixed(1)}h old)`);
         return cached.data;
       } else {

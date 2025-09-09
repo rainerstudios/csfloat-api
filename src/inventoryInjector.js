@@ -5,9 +5,19 @@
     const InventoryFloatChecker = {
         initialized: false,
         processedAssets: new Set(),
+        settings: {
+            autoLoad: true,
+            showStickers: true,
+            showKeychains: true,
+            floatPrecision: 4
+        },
         
         log(...args) {
             console.log('[CS2 Inventory Float Checker]', ...args);
+        },
+
+        formatFloat(floatValue) {
+            return floatValue.toFixed(this.settings.floatPrecision);
         },
         
         init() {
@@ -16,10 +26,28 @@
             
             this.log('Initializing inventory float checker...');
             
+            // Listen for settings updates
+            this.setupSettingsListener();
+            
             // Set up click handler for item inspection
             this.setupItemClickHandler();
             
             this.waitForSteamInventory();
+        },
+
+        setupSettingsListener() {
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'CS2_FLOAT_SETTINGS') {
+                    this.log('📨 Received settings:', event.data.settings);
+                    this.settings = { ...this.settings, ...event.data.settings };
+                    
+                    // Restart processing with new settings
+                    this.processedAssets.clear();
+                    if (this.settings.autoLoad) {
+                        this.waitForSteamInventory();
+                    }
+                }
+            });
         },
         
         setupItemClickHandler() {
@@ -184,6 +212,11 @@
         },
         
         runAutoLoader() {
+            if (!this.settings.autoLoad) {
+                this.log('⏸️ Auto-load disabled, skipping automatic float loading...');
+                return;
+            }
+            
             this.log('🚀 Running automatic float loader...');
             
             // Find all CS2 items in the inventory
@@ -516,8 +549,8 @@
             const floatValue = document.createElement('span');
             floatValue.className = 'float-value';
             floatValue.title = 'Click to copy float';
-            floatValue.textContent = floatData.floatvalue.toFixed(6);
-            floatValue.onclick = () => this.copyToClipboard(floatData.floatvalue.toFixed(6));
+            floatValue.textContent = this.formatFloat(floatData.floatvalue);
+            floatValue.onclick = () => this.copyToClipboard(this.formatFloat(floatData.floatvalue));
             
             floatRow.appendChild(floatValue);
             floatContainer.appendChild(floatRow);
@@ -729,13 +762,17 @@
             // Check different response formats (the response data is spread into payload)
             const floatValue = payload.iteminfo?.floatvalue || payload.floatvalue || payload.float_value;
             const paintSeed = payload.iteminfo?.paintseed || payload.paintseed || payload.paint_seed;
+            const stickers = payload.iteminfo?.stickers || payload.stickers || [];
+            const keychains = payload.iteminfo?.keychains || payload.keychains || [];
             
             if (floatValue !== undefined) {
                 InventoryFloatChecker.log(`✅ Successfully got float data for ${assetId}: ${floatValue}`);
                 
                 InventoryFloatChecker.displayFloatFromEvent(elementId, {
                     float: floatValue,
-                    paintSeed: paintSeed
+                    paintSeed: paintSeed,
+                    stickers: stickers,
+                    keychains: keychains
                 });
                 
                 // Debug display removed for production
@@ -805,14 +842,14 @@
         
         floatContainer.innerHTML = `
             <div style="display: flex; justify-content: center; align-items: center;">
-                <span style="font-family: 'Courier New', monospace; font-weight: bold; color: #4CAF50;">${floatData.float.toFixed(4)}</span>
+                <span style="font-family: 'Courier New', monospace; font-weight: bold; color: #4CAF50;">${this.formatFloat(floatData.float)}</span>
             </div>
         `;
         
         // Add hover tooltip
         this.addHoverTooltip(floatContainer, floatData);
         
-        floatContainer.onclick = () => this.copyToClipboard(floatData.float.toFixed(6));
+        floatContainer.onclick = () => this.copyToClipboard(this.formatFloat(floatData.float));
         
         element.appendChild(floatContainer);
     };
@@ -838,8 +875,8 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         `;
         
-        floatBadge.textContent = floatData.float.toFixed(4);
-        floatBadge.title = `Float: ${floatData.float.toFixed(6)}${floatData.paintSeed ? ` | Seed: ${floatData.paintSeed}` : ''}\nClick to copy`;
+        floatBadge.textContent = this.formatFloat(floatData.float);
+        floatBadge.title = `Float: ${this.formatFloat(floatData.float)}${floatData.paintSeed ? ` | Seed: ${floatData.paintSeed}` : ''}\nClick to copy`;
         
         floatBadge.onmouseover = () => {
             floatBadge.style.background = 'rgba(33, 150, 243, 1)';
@@ -850,7 +887,7 @@
             floatBadge.style.transform = 'scale(1)';
         };
         
-        floatBadge.onclick = () => this.copyToClipboard(floatData.float.toFixed(6));
+        floatBadge.onclick = () => this.copyToClipboard(this.formatFloat(floatData.float));
         
         element.appendChild(floatBadge);
     };
@@ -969,6 +1006,16 @@
                 <div style="display: flex; justify-content: space-between; margin: 4px 0;">
                     <span>Paint Seed:</span>
                     <span>${floatData.paintSeed}</span>
+                </div>` : ''}
+                ${InventoryFloatChecker.settings.showStickers && floatData.stickers && floatData.stickers.length > 0 ? `
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #333;">
+                    <div style="font-weight: bold; margin-bottom: 4px;">Stickers:</div>
+                    ${floatData.stickers.map(sticker => `<div style="margin: 2px 0; font-size: 12px;">${sticker.name || 'Sticker'}</div>`).join('')}
+                </div>` : ''}
+                ${InventoryFloatChecker.settings.showKeychains && floatData.keychains && floatData.keychains.length > 0 ? `
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #333;">
+                    <div style="font-weight: bold; margin-bottom: 4px;">Keychains:</div>
+                    ${floatData.keychains.map(keychain => `<div style="margin: 2px 0; font-size: 12px;">${keychain.name || 'Keychain'}</div>`).join('')}
                 </div>` : ''}
             `;
             
