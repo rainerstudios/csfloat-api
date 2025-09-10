@@ -1,10 +1,14 @@
 // Enhanced background script for CS2 Float Checker Pro
 
-// Simple rate limiting to prevent "too many pending requests"
+// Enhanced rate limiting with exponential backoff to prevent "too many pending requests"
 let lastRequestTime = 0;
 let requestCount = 0;
-const MAX_REQUESTS_PER_SECOND = 3;
+let requestQueue = [];
+let isProcessingQueue = false;
+const MAX_REQUESTS_PER_SECOND = 2; // Reduced to be more conservative
 const REQUEST_WINDOW = 1000; // 1 second
+const MAX_RETRIES = 3;
+const BASE_DELAY = 1000; // 1 second base delay for exponential backoff
 
 function canMakeRequest() {
   const now = Date.now();
@@ -21,6 +25,44 @@ function canMakeRequest() {
 function recordRequest() {
   requestCount++;
   lastRequestTime = Date.now();
+}
+
+// Enhanced request with retry logic and exponential backoff
+async function makeApiRequestWithRetry(url, retryCount = 0) {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'CS2FloatChecker/1.6.0'
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      return { success: true, data };
+    } else if (response.status === 429 && retryCount < MAX_RETRIES) {
+      // Rate limited, apply exponential backoff
+      const delay = BASE_DELAY * Math.pow(2, retryCount);
+      console.log(`Rate limited, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return makeApiRequestWithRetry(url, retryCount + 1);
+    } else {
+      return { success: false, error: data.error || `API returned status ${response.status}` };
+    }
+  } catch (error) {
+    if (retryCount < MAX_RETRIES) {
+      const delay = BASE_DELAY * Math.pow(2, retryCount);
+      console.log(`Network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES}):`, error.message);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return makeApiRequestWithRetry(url, retryCount + 1);
+    } else {
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -113,35 +155,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
         
-        // Use CS2FloatChecker API (same as CSFloat)
-        try {
-          const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
-          console.log('Fetching from API:', apiUrl);
+        // Use CS2FloatChecker API with enhanced retry logic
+        const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
+        console.log('Fetching from API:', apiUrl);
+        
+        // Record the request for rate limiting
+        recordRequest();
+        
+        const result = await makeApiRequestWithRetry(apiUrl);
+        
+        if (result.success) {
+          console.log('API response received:', result.data);
           
-          // Record the request for rate limiting
-          recordRequest();
+          // Cache the successful response
+          await cacheFloatData(cacheKey, result.data);
           
-          const response = await fetch(apiUrl);
-          const data = await response.json();
+          // Update API call stats
+          await updateStats({ apiCalls: 1, itemsChecked: 1 });
           
-          if (response.ok) {
-            console.log('API response received:', data);
-            
-            // Cache the successful response
-            await cacheFloatData(cacheKey, data);
-            
-            // Update API call stats
-            await updateStats({ apiCalls: 1, itemsChecked: 1 });
-            
-            sendResponse(data);
-          } else {
-            // Handle API errors
-            console.error('API error:', data.error || `HTTP ${response.status}`);
-            sendResponse({ error: data.error || `API returned status ${response.status}` });
-          }
-        } catch (error) {
-          console.error('Network error:', error.message);
-          sendResponse({ error: error.message });
+          sendResponse(result.data);
+        } else {
+          console.error('API error:', result.error);
+          sendResponse({ error: result.error });
         }
         
       } catch (error) {
