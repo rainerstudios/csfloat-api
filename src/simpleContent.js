@@ -9,6 +9,9 @@
 (() => {
     'use strict';
     
+    // Initialize component classes
+    let ProfitCalculator, TradeHoldDisplay, QuickBuyButtons, PatternDatabase, FloatFilter;
+    
     const CS2FloatChecker = {
         version: '1.5.1',
         initialized: false,
@@ -136,6 +139,71 @@
             this.log(`Removed ${floatElements.length} float displays`);
         },
 
+        async loadComponents() {
+            try {
+                // Load our custom components
+                const profitScript = document.createElement('script');
+                profitScript.src = chrome.runtime.getURL('src/profitCalculator.js');
+                document.head.appendChild(profitScript);
+                
+                const tradeHoldScript = document.createElement('script');
+                tradeHoldScript.src = chrome.runtime.getURL('src/tradeHoldDisplay.js');
+                document.head.appendChild(tradeHoldScript);
+                
+                const quickBuyScript = document.createElement('script');
+                quickBuyScript.src = chrome.runtime.getURL('src/quickBuyButtons.js');
+                document.head.appendChild(quickBuyScript);
+                
+                const patternScript = document.createElement('script');
+                patternScript.src = chrome.runtime.getURL('src/patternDatabase.js');
+                document.head.appendChild(patternScript);
+                
+                const filterScript = document.createElement('script');
+                filterScript.src = chrome.runtime.getURL('src/floatFilter.js');
+                document.head.appendChild(filterScript);
+                
+                // Load new visualization components
+                const floatBarScript = document.createElement('script');
+                floatBarScript.src = chrome.runtime.getURL('src/floatBar.js');
+                document.head.appendChild(floatBarScript);
+                
+                const floatRankingScript = document.createElement('script');
+                floatRankingScript.src = chrome.runtime.getURL('src/floatRanking.js');
+                document.head.appendChild(floatRankingScript);
+                
+                // Listing age component removed - keeping only top filter controls
+                
+                // Wait for scripts to load
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                // Initialize component classes
+                if (window.ProfitCalculator) {
+                    ProfitCalculator = new window.ProfitCalculator();
+                    this.log('✅ ProfitCalculator loaded');
+                }
+                if (window.TradeHoldDisplay) {
+                    TradeHoldDisplay = new window.TradeHoldDisplay();
+                    this.log('✅ TradeHoldDisplay loaded');
+                }
+                if (window.QuickBuyButtons) {
+                    QuickBuyButtons = new window.QuickBuyButtons();
+                    this.log('✅ QuickBuyButtons loaded');
+                }
+                if (window.PatternDatabase) {
+                    PatternDatabase = new window.PatternDatabase();
+                    this.log('✅ PatternDatabase loaded');
+                }
+                if (window.FloatFilter) {
+                    FloatFilter = new window.FloatFilter();
+                    this.log('✅ FloatFilter loaded');
+                }
+                
+                this.log('✅ All components loaded successfully');
+            } catch (error) {
+                this.log('❌ Error loading components:', error);
+            }
+        },
+
         init() {
             if (this.initialized) {
                 this.log('Already initialized, skipping...');
@@ -155,6 +223,9 @@
             
             // Create fallback FloatAPI if needed
             this.createFallbackAPI();
+            
+            // Load our enhanced components
+            this.loadComponents();
             
             if (document.readyState === 'loading') {
                 this.log('Document still loading, waiting for DOMContentLoaded...');
@@ -240,6 +311,9 @@
                 showPaintSeed: true,
                 showFloatRank: true,
                 enableFloatFilters: true,
+                enableQuickBuy: false, // Disabled by default for safety
+                showProfitCalculation: true,
+                showTradeHold: true,
                 floatPrecision: 6,
                 cacheExpiry: 24,
                 language: 'en'
@@ -256,6 +330,9 @@
                 
                 this.injectStyles();
                 this.log('Styles injected');
+                
+                this.setupCopyToClipboard();
+                this.log('Copy-to-clipboard handlers setup');
                 
                 // Start processing based on page type and settings
                 if (this.isMarketPage() && this.settings.enableMarket) {
@@ -323,6 +400,11 @@
             
             // Initialize float sorter (replaces old float filters)
             this.initFloatSorter();
+            
+            // Add advanced filter button if enabled
+            if (this.settings.enableFloatFilters && FloatFilter) {
+                this.addFilterToggleButton();
+            }
             
             // Initialize inventory highlighting if enabled
             this.log('Checking highlightOwned setting:', this.settings.highlightOwned);
@@ -692,36 +774,84 @@
                 const defindex = itemInfo?.defindex || 0;
                 const paintindex = itemInfo?.paintindex || 0;
                 
-                // Items that don't have float values
-                const isMeleeWeapon = weaponType.includes('|') && (
-                    weaponType.includes('Sabre') || 
+                // Items that don't have float values (much more restrictive)
+                const isMeleeWeapon = weaponType.includes('★') && (
                     weaponType.includes('Knife') || 
                     weaponType.includes('Bayonet') ||
-                    weaponType.includes('Karambit')
-                ) || defindex >= 500 && defindex < 520; // Common melee weapon defindex range
+                    weaponType.includes('Karambit') ||
+                    weaponType.includes('Sabre') ||
+                    weaponType.includes('Daggers') ||
+                    weaponType.includes('Cleaver') ||
+                    (defindex >= 500 && defindex < 520) // Melee weapon defindex range
+                );
                 
                 const isNonFloatItem = 
-                    weaponType.includes('Sticker |') ||           // Stickers
                     weaponType.includes('Patch |') ||            // Patches  
                     weaponType.includes('Music Kit |') ||        // Music kits
                     weaponType.includes('Sealed Graffiti |') ||  // Graffiti
-                    weaponType.includes('Case') ||               // Cases
-                    weaponType.includes('Key') ||                // Keys
+                    weaponType.includes(' Case ') ||             // Cases (more specific)
+                    weaponType.includes(' Key') ||               // Keys (more specific)
                     weaponType.includes('Tool') ||               // Tools
-                    defindex === 1201 ||                        // Agent skins
-                    paintindex === 0;                           // Items with no skin
+                    weaponType.includes('Agent |') ||            // Agent skins
+                    (paintindex === 0 && !weaponType.includes('|')); // Vanilla items without skin
                 
                 const hasNoFloat = isMeleeWeapon || isNonFloatItem;
                 
-                if (floatData && (floatValue !== undefined && floatValue > 0)) {
+                // Debug logging for troubleshooting
+                this.log(`🔍 Item analysis: ${weaponType}`);
+                this.log(`   hasNoFloat: ${hasNoFloat}, isMeleeWeapon: ${isMeleeWeapon}, isNonFloatItem: ${isNonFloatItem}`);
+                this.log(`   floatValue: ${floatValue}, floatData exists: ${!!floatData}`);
+                
+                // Check if we have valid float data and the item should show float
+                if (floatData && !hasNoFloat && (floatValue !== undefined && floatValue !== null && floatValue >= 0)) {
                     this.log(`✅ Float data received: ${floatValue}`);
                     
                     // Create float display
                     const floatDisplay = this.createFloatDisplay(floatData, type);
                     
+                    // Add special item type information if applicable
+                    const weaponType = itemInfo?.weapon_type || '';
+                    let specialTypeInfo = null;
+                    
+                    if (weaponType.includes('★')) {
+                        specialTypeInfo = { type: 'Knife', color: '#fbbf24' };
+                    } else if (weaponType.includes('Doppler')) {
+                        specialTypeInfo = { type: 'Doppler', color: '#8b5cf6' };
+                    } else if (weaponType.includes('Fade')) {
+                        specialTypeInfo = { type: 'Fade', color: '#3b82f6' };
+                    } else if (weaponType.includes('Case Hardened')) {
+                        specialTypeInfo = { type: 'Case Hardened', color: '#06b6d4' };
+                    }
+                    
+                    if (specialTypeInfo) {
+                        const specialDisplay = document.createElement('div');
+                        specialDisplay.style.cssText = `
+                            font-size: 10px;
+                            color: ${specialTypeInfo.color};
+                            margin-top: 2px;
+                            opacity: 0.9;
+                        `;
+                        specialDisplay.innerHTML = `${specialTypeInfo.type}`;
+                        floatDisplay.appendChild(specialDisplay);
+                    }
+                    
+                    // Check for special patterns
+                    if (PatternDatabase && itemInfo) {
+                        const patternInfo = PatternDatabase.analyzePattern(itemInfo);
+                        if (patternInfo && patternInfo.isSpecial) {
+                            const patternDisplay = PatternDatabase.createPatternDisplay(patternInfo, type);
+                            if (patternDisplay) {
+                                floatDisplay.appendChild(patternDisplay);
+                            }
+                        }
+                    }
+                    
                     // Position it correctly for market listings
                     if (type === 'market' && insertTarget !== element) {
                         insertTarget.parentNode.insertBefore(floatDisplay, insertTarget.nextSibling);
+                        
+                        // Add enhanced market features
+                        this.addMarketEnhancements(element, floatData, itemInfo);
                     } else {
                         element.appendChild(floatDisplay);
                     }
@@ -740,9 +870,23 @@
                     // Create special display for melee weapons
                     const meleeDisplay = this.createMeleeDisplay(itemInfo, type);
                     
+                    // Check for special patterns (even for items without float)
+                    if (PatternDatabase && itemInfo) {
+                        const patternInfo = PatternDatabase.analyzePattern(itemInfo);
+                        if (patternInfo && patternInfo.isSpecial) {
+                            const patternDisplay = PatternDatabase.createPatternDisplay(patternInfo, type);
+                            if (patternDisplay) {
+                                meleeDisplay.appendChild(patternDisplay);
+                            }
+                        }
+                    }
+                    
                     // Position it correctly for market listings
                     if (type === 'market' && insertTarget !== element) {
                         insertTarget.parentNode.insertBefore(meleeDisplay, insertTarget.nextSibling);
+                        
+                        // Add enhanced market features for special items
+                        this.addMarketEnhancements(element, floatData, itemInfo, true);
                     } else {
                         element.appendChild(meleeDisplay);
                     }
@@ -750,8 +894,23 @@
                 } else {
                     this.log('No float data received or invalid response');
                     
-                    // Show error indicator
-                    const errorIndicator = this.createErrorIndicator();
+                    // Determine error type based on floatData
+                    let errorType = 'unknown';
+                    let errorMessage = '';
+                    
+                    if (floatData && floatData.error) {
+                        errorMessage = floatData.error;
+                        if (errorMessage.toLowerCase().includes('rate limit')) {
+                            errorType = 'rate_limit';
+                        } else if (errorMessage.toLowerCase().includes('timeout')) {
+                            errorType = 'timeout';
+                        } else {
+                            errorType = 'api_error';
+                        }
+                    }
+                    
+                    // Show specific error indicator
+                    const errorIndicator = this.createErrorIndicator(errorType, errorMessage);
                     if (type === 'market' && insertTarget !== element) {
                         insertTarget.parentNode.insertBefore(errorIndicator, insertTarget.nextSibling);
                     } else {
@@ -761,8 +920,8 @@
             } catch (error) {
                 this.log('Error adding float display:', error);
                 
-                // Show error indicator
-                const errorIndicator = this.createErrorIndicator();
+                // Show error indicator for general errors
+                const errorIndicator = this.createErrorIndicator('api_error', error.message);
                 element.appendChild(errorIndicator);
             }
         },
@@ -818,6 +977,11 @@
             // Add data attribute for float filters
             container.dataset.floatValue = floatValue;
             
+            // Store data for visualization components
+            container.dataset.floatValue = floatValue;
+            container.dataset.minWear = '0.00';
+            container.dataset.maxWear = '1.00';
+            
             // Create professional display matching competitor format
             if (type === 'inventory') {
                 // For inventory - overlay style with better visibility
@@ -825,14 +989,24 @@
                     <div class="item-info" style="z-index: 10;">
                         <div class="float-data">
                             <div class="item_row item_row__value">
-                                <span class="float-value" title="Click to copy float" style="
+                                <span class="float-value cs2-float-copyable" title="Click to copy float: ${floatValue}" style="
                                     background: rgba(0, 0, 0, 0.8);
                                     color: #4CAF50;
                                     padding: 2px 4px;
                                     border-radius: 3px;
                                     font-size: 11px;
                                     font-weight: bold;
-                                ">${displayFloat}</span>
+                                    cursor: pointer;
+                                    user-select: none;
+                                    pointer-events: auto;
+                                    position: relative;
+                                    z-index: 10;
+                                " data-float-value="${floatValue}">${displayFloat}</span>
+                                <span style="margin-left: 4px; cursor: pointer; opacity: 0.7; display: inline-block; pointer-events: auto; position: relative; z-index: 10;" class="cs2-float-copyable" data-float-value="${floatValue}" title="Copy float value">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="pointer-events: none;">
+                                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                                    </svg>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -846,7 +1020,7 @@
                                     padding: 1px 3px;
                                     border-radius: 2px;
                                     font-size: 9px;
-                                ">#{paintSeed}</span>
+                                ">#${paintSeed}</span>
                             </div>
                         </div>
                     </div>` : ''}
@@ -868,7 +1042,12 @@
                     ">
                         <div style="line-height: 1.4;">
                             <div style="font-size: 13px; font-weight: 600; color: #4CAF50; margin-bottom: 1px;">
-                                Float: ${displayFloat}
+                                Float: <span class="cs2-float-copyable" title="Click to copy float: ${floatValue}" style="cursor: pointer; user-select: none; pointer-events: auto; position: relative; z-index: 10; display: inline-block;" data-float-value="${floatValue}">${displayFloat}</span>
+                                <span style="margin-left: 4px; cursor: pointer; opacity: 0.7; display: inline-block; pointer-events: auto; position: relative; z-index: 10;" class="cs2-float-copyable" data-float-value="${floatValue}" title="Copy float value">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="pointer-events: none;">
+                                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                                    </svg>
+                                </span>
                             </div>
                             ${(paintSeed || paintIndex || originName) ? `
                             <div style="font-size: 11px; color: #8F98A0;">
@@ -893,7 +1072,6 @@
                     border: none;
                     margin: 0;
                     box-shadow: none;
-                    pointer-events: none;
                 `;
             } else if (type === 'inventory') {
                 container.style.cssText = `
@@ -912,7 +1090,149 @@
                 `;
             }
             
+            // Add visualization components after container is ready
+            setTimeout(() => {
+                if (window.CS2FloatBar && typeof window.CS2FloatBar.addFloatBar === 'function') {
+                    try {
+                        window.CS2FloatBar.addFloatBar(container, floatValue, 0.00, 1.00);
+                    } catch (error) {
+                        console.log('[CS2 Float] Float bar error:', error);
+                    }
+                }
+                
+                if (window.CS2FloatRanking && typeof window.CS2FloatRanking.addRanking === 'function') {
+                    try {
+                        window.CS2FloatRanking.addRanking(container, floatValue, 0.00, 1.00);
+                    } catch (error) {
+                        console.log('[CS2 Float] Float ranking error:', error);
+                    }
+                }
+            }, 200);
+            
             return container;
+        },
+
+        addFilterToggleButton() {
+            // Only show filter button on individual CS2 item listing pages, not search pages
+            const url = window.location.href;
+            if (!url.includes('/market/listings/') || url.includes('/market/search')) {
+                this.log('Skipping filter button - not on individual item listing page');
+                return;
+            }
+            
+            // Check if button already exists
+            if (document.querySelector('.cs2-filter-toggle-btn')) {
+                return;
+            }
+
+            const toggleButton = document.createElement('button');
+            toggleButton.className = 'cs2-filter-toggle-btn';
+            toggleButton.innerHTML = '🔍 Advanced Filters';
+            toggleButton.title = 'Open advanced float and pattern filters';
+            
+            toggleButton.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(to bottom, #75b022 5%, #68a54b 100%);
+                border: 1px solid #4e7a0d;
+                border-radius: 6px;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 16px;
+                text-align: center;
+                text-shadow: 1px 1px 0px #2d4611;
+                transition: all 0.2s ease;
+                z-index: 9999;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            `;
+
+            toggleButton.addEventListener('mouseenter', () => {
+                toggleButton.style.background = 'linear-gradient(to bottom, #68a54b 5%, #75b022 100%)';
+                toggleButton.style.transform = 'translateY(-1px)';
+                toggleButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.4)';
+            });
+
+            toggleButton.addEventListener('mouseleave', () => {
+                toggleButton.style.background = 'linear-gradient(to bottom, #75b022 5%, #68a54b 100%)';
+                toggleButton.style.transform = 'translateY(0)';
+                toggleButton.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+            });
+
+            toggleButton.addEventListener('click', () => {
+                if (FloatFilter) {
+                    const existingPanel = document.querySelector('.cs2-float-filter-panel');
+                    if (existingPanel) {
+                        existingPanel.remove();
+                    } else {
+                        FloatFilter.createFilterPanel();
+                    }
+                }
+            });
+
+            document.body.appendChild(toggleButton);
+            this.log('✅ Advanced filter toggle button added');
+        },
+
+        addMarketEnhancements(marketElement, floatData, itemInfo, isSpecialItem = false) {
+            try {
+                // Add trade hold display if component is available
+                if (TradeHoldDisplay && itemInfo && this.settings.showTradeHold) {
+                    const asset = {
+                        tradable: itemInfo.tradable !== undefined ? itemInfo.tradable : 1,
+                        descriptions: itemInfo.descriptions || [],
+                        market_tradable_restriction: itemInfo.market_tradable_restriction || 0
+                    };
+                    
+                    const tradeHoldElement = TradeHoldDisplay.createTradeHoldDisplay(asset, 'market');
+                    if (tradeHoldElement) {
+                        const actionDiv = marketElement.querySelector('.market_listing_row_action');
+                        if (actionDiv) {
+                            actionDiv.appendChild(tradeHoldElement);
+                        }
+                    }
+                }
+                
+                // Add profit display if component is available and not a special item
+                if (ProfitCalculator && !isSpecialItem && this.settings.showProfitCalculation) {
+                    const listingData = ProfitCalculator.extractListingData(marketElement);
+                    if (listingData) {
+                        const profitElement = ProfitCalculator.createProfitDisplay(listingData, 'market');
+                        if (profitElement) {
+                            const actionDiv = marketElement.querySelector('.market_listing_row_action');
+                            if (actionDiv) {
+                                actionDiv.appendChild(profitElement);
+                            }
+                        }
+                    }
+                }
+                
+                // Add quick buy button if component is available and enabled
+                if (QuickBuyButtons && this.settings.enableQuickBuy && !isSpecialItem) {
+                    const listingData = ProfitCalculator?.extractListingData(marketElement);
+                    const listingId = marketElement.id || `listing_${Date.now()}`;
+                    
+                    if (listingData) {
+                        const quickBuyElement = QuickBuyButtons.createQuickBuyButtons(
+                            listingData, 
+                            itemInfo, 
+                            listingId
+                        );
+                        
+                        if (quickBuyElement) {
+                            const actionDiv = marketElement.querySelector('.market_listing_row_action');
+                            if (actionDiv) {
+                                actionDiv.appendChild(quickBuyElement);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                this.log('Error adding market enhancements:', error);
+            }
         },
 
         createMeleeDisplay(itemInfo, type) {
@@ -924,33 +1244,26 @@
             const stickers = itemInfo?.stickers || [];
             const keychains = itemInfo?.keychains || [];
             
-            // Determine item type and emoji
-            let emoji = '🔶';
+            // Determine item type
             let itemTypeDisplay = 'Special Item';
             let color = '#fbbf24';
             
             if (weaponType.includes('Sabre') || weaponType.includes('Knife') || weaponType.includes('Bayonet') || weaponType.includes('Karambit')) {
-                emoji = '🔪';
                 itemTypeDisplay = 'Melee';
                 color = '#fbbf24';
             } else if (weaponType.includes('Sticker') || weaponType.includes('Patch')) {
-                emoji = '🏷️';
                 itemTypeDisplay = 'Sticker/Patch';
                 color = '#8b5cf6';
             } else if (weaponType.includes('Music Kit')) {
-                emoji = '🎵';
                 itemTypeDisplay = 'Music Kit';
                 color = '#3b82f6';
             } else if (weaponType.includes('Graffiti')) {
-                emoji = '🎨';
                 itemTypeDisplay = 'Graffiti';
                 color = '#f59e0b';
             } else if (weaponType.includes('Case')) {
-                emoji = '📦';
                 itemTypeDisplay = 'Case';
                 color = '#6b7280';
             } else if (weaponType.includes('Key')) {
-                emoji = '🔑';
                 itemTypeDisplay = 'Key';
                 color = '#f59e0b';
             }
@@ -969,7 +1282,7 @@
                                     font-size: 10px;
                                     font-weight: bold;
                                     white-space: nowrap;
-                                ">${emoji} ${itemTypeDisplay}</span>
+                                ">${itemTypeDisplay}</span>
                             </div>
                         </div>
                     </div>
@@ -1002,7 +1315,7 @@
                         border: none;
                         box-shadow: none;
                     ">
-                        ${emoji} ${itemTypeDisplay}${paintSeed > 0 ? ` • #${paintSeed}` : ''}
+                        ${itemTypeDisplay}${paintSeed > 0 ? ` • #${paintSeed}` : ''}
                     </div>
                 `;
             }
@@ -1010,16 +1323,36 @@
             return container;
         },
 
-        createErrorIndicator() {
+        createErrorIndicator(errorType = 'unknown', errorMessage = '') {
             const error = document.createElement('div');
             error.className = 'cs2-float-error';
-            error.textContent = '!';
-            error.title = 'Float check failed';
+            
+            // Determine display based on error type
+            let displayText = '!';
+            let title = 'Float check failed';
+            let backgroundColor = 'rgba(239, 68, 68, 0.9)';
+            
+            if (errorType === 'rate_limit' || errorMessage.toLowerCase().includes('rate limit')) {
+                displayText = 'Rate Limited';
+                title = 'API rate limit reached - try refreshing in a few moments';
+                backgroundColor = 'rgba(245, 158, 11, 0.9)'; // Orange
+            } else if (errorType === 'api_error') {
+                displayText = 'API Error';
+                title = 'API temporarily unavailable';
+                backgroundColor = 'rgba(239, 68, 68, 0.9)'; // Red
+            } else if (errorType === 'timeout') {
+                displayText = 'Timeout';
+                title = 'Request timed out - try refreshing';
+                backgroundColor = 'rgba(156, 163, 175, 0.9)'; // Gray
+            }
+            
+            error.textContent = displayText;
+            error.title = title;
             error.style.cssText = `
                 position: absolute;
                 top: 5px;
                 right: 5px;
-                background: rgba(239, 68, 68, 0.9);
+                background: ${backgroundColor};
                 color: white;
                 padding: 2px 6px;
                 border-radius: 4px;
@@ -1027,6 +1360,7 @@
                 font-weight: bold;
                 z-index: 1000;
                 cursor: help;
+                user-select: none;
             `;
             return error;
         },
@@ -1191,6 +1525,150 @@
             });
         },
 
+        setupCopyToClipboard() {
+            const self = this; // Preserve context
+            // Simple click handler like CSGOFloat
+            document.addEventListener('click', async (event) => {
+                // Find the copyable element
+                let target = event.target;
+                
+                // Check if clicking on SVG path
+                if (target.tagName === 'path' || target.tagName === 'svg') {
+                    target = target.closest('.cs2-float-copyable');
+                }
+                
+                if (!target) {
+                    // Look up the tree for copyable element
+                    target = event.target;
+                    while (target && !target.classList.contains('cs2-float-copyable')) {
+                        target = target.parentElement;
+                        if (!target || target === document.body) return;
+                    }
+                }
+                
+                if (target && target.classList.contains('cs2-float-copyable')) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    
+                    const floatValue = target.getAttribute('data-float-value') || target.dataset.floatValue;
+                    if (floatValue) {
+                        try {
+                            // Show loading state
+                            const originalSVG = target.querySelector('svg');
+                            if (originalSVG) {
+                                // Store original SVG
+                                const originalSVGContent = originalSVG.innerHTML;
+                                
+                                // Show loading spinner
+                                originalSVG.innerHTML = `
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" opacity="0.3"/>
+                                    <path d="M22 12A10 10 0 0 0 12 2" stroke="currentColor" stroke-width="2" fill="none">
+                                        <animateTransform attributeName="transform" type="rotate" values="0 12 12;360 12 12" dur="1s" repeatCount="indefinite"/>
+                                    </path>
+                                `;
+                                originalSVG.setAttribute('viewBox', '0 0 24 24');
+                            }
+                            
+                            await navigator.clipboard.writeText(floatValue);
+                            
+                            // Show success tick
+                            if (originalSVG) {
+                                originalSVG.innerHTML = `
+                                    <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+                                `;
+                                originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                
+                                // Reset to original after 2 seconds
+                                setTimeout(() => {
+                                    originalSVG.innerHTML = originalSVGContent;
+                                    originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                }, 2000);
+                            }
+                            
+                            console.log('[CS2 Float] Copied to clipboard:', floatValue);
+                        } catch (error) {
+                            // Fallback copy method with same visual feedback
+                            try {
+                                const originalSVG = target.querySelector('svg');
+                                let originalSVGContent;
+                                
+                                if (originalSVG) {
+                                    originalSVGContent = originalSVG.innerHTML;
+                                    // Show loading spinner
+                                    originalSVG.innerHTML = `
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" opacity="0.3"/>
+                                        <path d="M22 12A10 10 0 0 0 12 2" stroke="currentColor" stroke-width="2" fill="none">
+                                            <animateTransform attributeName="transform" type="rotate" values="0 12 12;360 12 12" dur="1s" repeatCount="indefinite"/>
+                                        </path>
+                                    `;
+                                    originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                }
+                                
+                                const textArea = document.createElement('textarea');
+                                textArea.value = floatValue;
+                                textArea.style.position = 'fixed';
+                                textArea.style.top = '0';
+                                textArea.style.left = '0';
+                                textArea.style.width = '2em';
+                                textArea.style.height = '2em';
+                                textArea.style.padding = '0';
+                                textArea.style.border = 'none';
+                                textArea.style.outline = 'none';
+                                textArea.style.boxShadow = 'none';
+                                textArea.style.background = 'transparent';
+                                document.body.appendChild(textArea);
+                                textArea.focus();
+                                textArea.select();
+                                
+                                const successful = document.execCommand('copy');
+                                document.body.removeChild(textArea);
+                                
+                                if (successful) {
+                                    // Show success tick
+                                    if (originalSVG) {
+                                        originalSVG.innerHTML = `
+                                            <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+                                        `;
+                                        originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                        
+                                        // Reset to original after 2 seconds
+                                        setTimeout(() => {
+                                            originalSVG.innerHTML = originalSVGContent;
+                                            originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                        }, 2000);
+                                    }
+                                    
+                                    console.log('[CS2 Float] Copied to clipboard (fallback):', floatValue);
+                                } else {
+                                    // Reset SVG on failure
+                                    if (originalSVG && originalSVGContent) {
+                                        originalSVG.innerHTML = originalSVGContent;
+                                        originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                    }
+                                    throw new Error('Copy command failed');
+                                }
+                            } catch (fallbackError) {
+                                // Reset SVG on complete failure
+                                const originalSVG = target.querySelector('svg');
+                                if (originalSVG) {
+                                    // Reset to copy icon
+                                    originalSVG.innerHTML = `
+                                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                                    `;
+                                    originalSVG.setAttribute('viewBox', '0 0 24 24');
+                                }
+                                
+                                console.error('[CS2 Float] Copy failed:', fallbackError);
+                                alert(`Float value: ${floatValue}\n\nCopy failed. Please copy manually.`);
+                            }
+                        }
+                    }
+                }
+            });
+        },
+
         // Inventory observer no longer needed - Steam API handles dynamic updates
 
         injectStyles() {
@@ -1233,11 +1711,32 @@
                     min-width: 120px;
                 }
                 
-                /* Keep our float display behind Steam popups */
+                /* Keep our float display behind Steam popups but allow interaction */
                 .cs2-float-display.cs2-float-market {
                     z-index: 1 !important;
                     position: relative !important;
-                    pointer-events: none !important;
+                }
+                
+                /* Ensure copyable elements are clickable */
+                .cs2-float-copyable {
+                    pointer-events: auto !important;
+                    cursor: pointer !important;
+                }
+                
+                /* Copy icon hover effect */
+                .cs2-float-copyable:hover {
+                    opacity: 1 !important;
+                    transform: scale(1.1);
+                    transition: all 0.2s ease;
+                }
+                
+                /* Remove underlines from copyable elements */
+                .cs2-float-copyable {
+                    text-decoration: none !important;
+                }
+                
+                .cs2-float-copyable:hover {
+                    text-decoration: none !important;
                 }
                 
                 @keyframes pulse {

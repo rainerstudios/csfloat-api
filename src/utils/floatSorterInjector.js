@@ -18,12 +18,12 @@ function initFloatSorter(settings) {
             return;
         }
         
-        // Check if we're on a market page with listings
-        const isMarketPage = window.location.href.includes('/market/') && 
-                           (document.querySelector('#searchResultsRows') || document.querySelector('.market_listing_table'));
+        // Check if we're on an individual CS2 item listing page (not search pages)
+        const url = window.location.href;
+        const isValidPage = url.includes('/market/listings/') && !url.includes('/market/search');
         
-        if (!isMarketPage) {
-            console.log('[CS2 Float Sorter] Not a market listings page');
+        if (!isValidPage) {
+            console.log('[CS2 Float Sorter] Not a valid individual item listing page (search pages excluded)');
             return;
         }
         

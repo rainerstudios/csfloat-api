@@ -3,7 +3,9 @@
     "allow": [
       "Read(//g/AppADay/context/**)",
       "Bash(npm run build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebFetch(domain:api.cs2floatchecker.com)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

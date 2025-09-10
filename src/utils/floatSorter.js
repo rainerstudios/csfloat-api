@@ -18,6 +18,12 @@ export class FloatSorter {
     }
     
     init() {
+        // Only show filters on individual CS2 item listing pages, not search pages
+        if (!this.isValidPageForFilters()) {
+            console.log('[FloatSorter] Skipping filter creation - not a valid page');
+            return;
+        }
+        
         this.createFilterInterface();
         this.setupEventListeners();
         this.initMutationObserver();
@@ -28,6 +34,12 @@ export class FloatSorter {
                 this.filterItems();
             }
         }, 1000);
+    }
+    
+    isValidPageForFilters() {
+        const url = window.location.href;
+        // Only show on individual item listing pages, not search pages
+        return url.includes('/market/listings/') && !url.includes('/market/search');
     }
     
     createFilterInterface() {
