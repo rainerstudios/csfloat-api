@@ -1,5 +1,11 @@
 // Enhanced background script for CS2 Float Checker Pro
 
+// Bulk request queue for efficient API usage
+let bulkQueue = [];
+let bulkTimer = null;
+const BULK_DELAY = 2000; // 2 second delay before processing bulk requests
+const BULK_SIZE = 10; // Maximum items per bulk request
+
 // Enhanced rate limiting with exponential backoff to prevent "too many pending requests"
 let lastRequestTime = 0;
 let requestCount = 0;
@@ -62,6 +68,137 @@ async function makeApiRequestWithRetry(url, retryCount = 0) {
     } else {
       return { success: false, error: error.message };
     }
+  }
+}
+
+// Bulk API request function
+async function makeBulkApiRequest(links) {
+  try {
+    const response = await fetch('https://api.cs2floatchecker.com/bulk', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'CS2FloatChecker/1.6.0'
+      },
+      body: JSON.stringify({
+        links: links.map(link => ({ link }))
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      return { success: true, data };
+    } else {
+      return { success: false, error: data.error || `API returned status ${response.status}` };
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Add request to bulk queue
+function addToBulkQueue(inspectLink, sendResponse) {
+  bulkQueue.push({ inspectLink, sendResponse });
+  
+  // Start bulk timer if not already running
+  if (!bulkTimer) {
+    bulkTimer = setTimeout(processBulkQueue, BULK_DELAY);
+  }
+}
+
+// Process bulk queue
+async function processBulkQueue() {
+  if (bulkQueue.length === 0) {
+    bulkTimer = null;
+    return;
+  }
+
+  const batch = bulkQueue.splice(0, BULK_SIZE);
+  console.log(`Processing bulk request with ${batch.length} items`);
+
+  const links = batch.map(item => item.inspectLink);
+  const result = await makeBulkApiRequest(links);
+
+  if (result.success) {
+    // Process each item in the bulk response
+    const responseKeys = Object.keys(result.data);
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i];
+      const itemKey = responseKeys[i];
+      const itemData = result.data[itemKey];
+
+      if (itemData && !itemData.error) {
+        // Cache the successful response (wrap in iteminfo for consistency)
+        await cacheFloatData(item.inspectLink, { iteminfo: itemData });
+        
+        // Update stats
+        await updateStats({ apiCalls: 0.1, itemsChecked: 1 }); // Fractional API call since it's bulk
+        
+        // Send response to the original requester
+        item.sendResponse({ iteminfo: itemData });
+      } else {
+        // Handle individual item errors
+        item.sendResponse({ error: itemData?.error || 'Item not found in bulk response' });
+      }
+    }
+  } else {
+    // Handle bulk request failure - fall back to individual requests
+    console.log('Bulk request failed, falling back to individual requests:', result.error);
+    for (const item of batch) {
+      // Add back to individual processing
+      processSingleRequest(item.inspectLink, item.sendResponse);
+    }
+  }
+
+  // Continue processing if there are more items in queue
+  if (bulkQueue.length > 0) {
+    bulkTimer = setTimeout(processBulkQueue, BULK_DELAY);
+  } else {
+    bulkTimer = null;
+  }
+}
+
+// Process single request (fallback from bulk)
+async function processSingleRequest(inspectLink, sendResponse) {
+  try {
+    // Check cache first
+    const cacheKey = inspectLink;
+    const cachedData = await getCachedFloatData(cacheKey);
+    if (cachedData) {
+      console.log('Returning cached float data');
+      await updateStats({ cacheHits: 1 });
+      sendResponse(cachedData);
+      return;
+    }
+
+    // Check rate limit
+    if (!canMakeRequest()) {
+      console.log('Rate limit exceeded, delaying request');
+      sendResponse({ error: 'Rate limit exceeded, please try again in a moment' });
+      return;
+    }
+
+    // Use single API request with retry logic
+    const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(inspectLink)}`;
+    console.log('Fetching from API (individual):', apiUrl);
+
+    recordRequest();
+    const result = await makeApiRequestWithRetry(apiUrl);
+
+    if (result.success) {
+      console.log('API response received:', result.data);
+      await cacheFloatData(cacheKey, result.data);
+      await updateStats({ apiCalls: 1, itemsChecked: 1 });
+      sendResponse(result.data);
+    } else {
+      console.error('API error:', result.error);
+      sendResponse({ error: result.error });
+    }
+  } catch (error) {
+    console.error('Background fetch error:', error);
+    sendResponse({ error: error.message });
   }
 }
 
@@ -148,36 +285,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
         
-        // Check rate limit before making request
-        if (!canMakeRequest()) {
-          console.log('Rate limit exceeded, delaying request');
-          sendResponse({ error: 'Rate limit exceeded, please try again in a moment' });
-          return;
-        }
-        
-        // Use CS2FloatChecker API with enhanced retry logic
-        const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
-        console.log('Fetching from API:', apiUrl);
-        
-        // Record the request for rate limiting
-        recordRequest();
-        
-        const result = await makeApiRequestWithRetry(apiUrl);
-        
-        if (result.success) {
-          console.log('API response received:', result.data);
-          
-          // Cache the successful response
-          await cacheFloatData(cacheKey, result.data);
-          
-          // Update API call stats
-          await updateStats({ apiCalls: 1, itemsChecked: 1 });
-          
-          sendResponse(result.data);
-        } else {
-          console.error('API error:', result.error);
-          sendResponse({ error: result.error });
-        }
+        // Add to bulk queue for efficient processing
+        // This reduces API load and improves performance
+        console.log('Adding request to bulk queue');
+        addToBulkQueue(request.inspectLink, sendResponse);
         
       } catch (error) {
         console.error('Background fetch error:', error);
