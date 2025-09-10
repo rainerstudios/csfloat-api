@@ -318,7 +318,8 @@
 
         processMarketPage() {
             this.log('Processing market page...');
-            
+            this.log('Current URL:', window.location.href);
+            this.log('Market page detected:', this.isMarketPage());
             
             // Initialize float sorter (replaces old float filters)
             this.initFloatSorter();
@@ -352,7 +353,11 @@
                 
                 this.log(`Total unique market listings found: ${marketListings.length}`);
                 
-                // Debug element removed for production
+                // Debug current page content
+                this.log('Page title:', document.title);
+                this.log('Body classes:', document.body.className);
+                this.log('Page has listings container:', !!document.querySelector('#searchResultsRows'));
+                this.log('Page has market table:', !!document.querySelector('.market_listing_table'));
                 
                 if (marketListings.length > 0) {
                     marketListings.forEach((listing, index) => {
@@ -583,6 +588,7 @@
 
         extractInspectLink(element) {
             this.log('Extracting inspect link from element:', element.tagName, element.className);
+            this.log('Element HTML preview:', element.innerHTML.substring(0, 500) + '...');
             
             // Try multiple methods to find inspect link
             let inspectLink = null;
@@ -591,14 +597,23 @@
             const inspectElement = element.querySelector('a[href*="steam://rungame/730"]');
             if (inspectElement) {
                 this.log('Method 1 success: Found steam link in <a> tag');
+                this.log('Steam link:', inspectElement.getAttribute('href'));
                 return inspectElement.getAttribute('href');
+            } else {
+                this.log('Method 1 failed: No <a> tag with steam://rungame/730 found');
             }
             
             // Method 2: Look in the market_listing_row_action div
             const actionDiv = element.querySelector('.market_listing_row_action a');
+            this.log('Method 2: Action div found:', !!actionDiv);
+            if (actionDiv) {
+                this.log('Action div href:', actionDiv.href);
+            }
             if (actionDiv && actionDiv.href && actionDiv.href.includes('steam://rungame/730')) {
                 this.log('Method 2 success: Found steam link in action div');
                 return actionDiv.href;
+            } else {
+                this.log('Method 2 failed: No valid steam link in action div');
             }
             
             // Method 3: data-inspect attribute
