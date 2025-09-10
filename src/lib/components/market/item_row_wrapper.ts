@@ -24,6 +24,8 @@ import {defined} from '../../utils/checkers';
 import {pickTextColour} from '../../utils/colours';
 import '../common/ui/floatbar';
 import './sticker_display';
+import './trade_hold_display';
+import './profit_calculator';
 import {FetchBluegem, FetchBluegemResponse} from '../../bridge/handlers/fetch_bluegem';
 import {ClientSend} from '../../bridge/client';
 import {ConflictingExtension, ConflictingMode, HideConflictingElement, StyleConflictingElement} from '../decorators';
@@ -251,6 +253,8 @@ export class ItemRowWrapper extends FloatElement {
                               Fade: ${floor(fadePercentage, 5)}%`
                         : nothing}
                     ${this.renderBluegem()}
+                    ${this.renderTradeHold()}
+                    ${this.renderProfitCalculator()}
                 </div>
             `;
         } else if (this.itemInfo && isCharm(this.asset)) {
@@ -294,6 +298,26 @@ export class ItemRowWrapper extends FloatElement {
                 maxFloat=${this.itemInfo.max}
             >
             </csfloat-float-bar>
+        `;
+    }
+    
+    renderTradeHold(): TemplateResult<1> {
+        if (!this.asset) {
+            return html``;
+        }
+
+        return html`
+            <csfloat-trade-hold-display .asset=${this.asset}></csfloat-trade-hold-display>
+        `;
+    }
+    
+    renderProfitCalculator(): TemplateResult<1> {
+        if (!this.listingInfo) {
+            return html``;
+        }
+
+        return html`
+            <csfloat-profit-calculator .listingInfo=${this.listingInfo}></csfloat-profit-calculator>
         `;
     }
 }

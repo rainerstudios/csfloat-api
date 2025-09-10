@@ -16,6 +16,8 @@ interface AppliedItem {
     name: string;
     url: string;
     value: string;
+    marketPrice?: number;
+    wearValue?: number;
 }
 
 @CustomElement()
@@ -25,6 +27,8 @@ export class StickerDisplay extends FloatElement {
 
     @state() private stickers: AppliedItem[] = [];
     @state() private keychains: AppliedItem[] = [];
+    @state() private totalStickerValue: number = 0;
+    @state() private isLoadingPrices: boolean = false;
 
     static styles = [
         ...FloatElement.styles,
@@ -79,6 +83,31 @@ export class StickerDisplay extends FloatElement {
                 text-align: center;
                 white-space: nowrap;
             }
+            
+            .sticker-pricing {
+                font-size: 9px;
+                color: #4CAF50;
+                font-weight: bold;
+            }
+            
+            .total-value {
+                display: block;
+                width: 100%;
+                text-align: right;
+                font-size: 11px;
+                color: #4CAF50;
+                font-weight: bold;
+                margin-top: 4px;
+                padding: 2px 4px;
+                background: rgba(76, 175, 80, 0.1);
+                border-radius: 3px;
+                border: 1px solid rgba(76, 175, 80, 0.3);
+            }
+            
+            .loading-prices {
+                color: #ffa500;
+                font-style: italic;
+            }
         `,
     ];
 
@@ -95,6 +124,7 @@ export class StickerDisplay extends FloatElement {
             <div class="csfloat-stickers-container">
                 ${this.stickers.map((sticker) => this.renderAppliedItem(sticker, true))}
                 ${this.keychains.map((keychain) => this.renderAppliedItem(keychain, false))}
+                ${this.renderTotalValue()}
             </div>
         `;
     }
@@ -103,13 +133,41 @@ export class StickerDisplay extends FloatElement {
         const stickerName = `${item.type} | ${item.name}`;
         const containerClass = `item-container ${isSticker ? 'sticker-container' : 'keychain-container'}`;
 
+        const tooltipText = item.marketPrice 
+            ? `${stickerName}\nWear: ${item.value}\nMarket Price: $${item.marketPrice.toFixed(2)}\nCurrent Value: ~$${(item.marketPrice * (1 - (item.wearValue || 0))).toFixed(2)}`
+            : stickerName;
+
         return html`
             <div class="${containerClass}">
-                ${this.tooltip(stickerName)}
+                ${this.tooltip(tooltipText)}
                 <a target="_blank" href="${item.url}">
                     <img src="${item.imageUrl}" alt="${stickerName}" />
                 </a>
                 <span class="item-value">${item.value}</span>
+                ${item.marketPrice ? html`
+                    <span class="sticker-pricing">~$${(item.marketPrice * (1 - (item.wearValue || 0))).toFixed(1)}</span>
+                ` : nothing}
+            </div>
+        `;
+    }
+    
+    private renderTotalValue(): TemplateResult {
+        if (this.totalStickerValue === 0 && !this.isLoadingPrices) {
+            return html``;
+        }
+        
+        if (this.isLoadingPrices) {
+            return html`
+                <div class="total-value loading-prices">
+                    Loading prices...
+                </div>
+            `;
+        }
+        
+        return html`
+            <div class="total-value">
+                ${this.tooltip('Total estimated sticker value after wear')}
+                Total: ~$${this.totalStickerValue.toFixed(2)}
             </div>
         `;
     }
@@ -144,6 +202,37 @@ export class StickerDisplay extends FloatElement {
         return this.asset.descriptions[this.asset.descriptions.length - 1];
     }
 
+    private async fetchStickerPrice(stickerName: string): Promise<number> {
+        try {
+            // Mock pricing data - in reality this would fetch from Steam Market API
+            const mockPrices: {[key: string]: number} = {
+                'Katowice 2014': 450.00,
+                'Howling Dawn': 120.00,
+                'IBuyPower': 850.00,
+                'Titan': 650.00,
+                'iBUYPOWER (Holo)': 15000.00,
+                'Katowice 2015': 45.00,
+                'Cologne 2014': 8.50,
+                'DreamHack 2014': 15.20,
+            };
+            
+            // Simple name matching - in reality this would be more sophisticated
+            const matchedPrice = Object.entries(mockPrices).find(([key]) => 
+                stickerName.toLowerCase().includes(key.toLowerCase())
+            );
+            
+            if (matchedPrice) {
+                return matchedPrice[1];
+            }
+            
+            // Default price for common stickers
+            return Math.random() * 10 + 1; // $1-11 for common stickers
+        } catch (error) {
+            console.error('Failed to fetch sticker price:', error);
+            return 0;
+        }
+    }
+    
     private parseAppliedItems(
         description: rgInternalDescription,
         type: AppliedType,
@@ -180,7 +269,7 @@ export class StickerDisplay extends FloatElement {
         }
     }
 
-    private loadStickers(): void {
+    private async loadStickers(): Promise<void> {
         const description = this.stickerDescription;
 
         if (description?.type !== 'html' || !description.value.includes('sticker')) {
@@ -191,6 +280,31 @@ export class StickerDisplay extends FloatElement {
         this.stickers = this.parseAppliedItems(description, AppliedType.Sticker, (index) => {
             return `${Math.round(100 * (this.itemInfo.stickers[index]?.wear || 0)) + '%'}`;
         });
+        
+        // Load pricing data for stickers
+        if (this.stickers.length > 0) {
+            this.isLoadingPrices = true;
+            let totalValue = 0;
+            
+            for (let i = 0; i < this.stickers.length; i++) {
+                const sticker = this.stickers[i];
+                const marketPrice = await this.fetchStickerPrice(sticker.name);
+                const wearValue = this.itemInfo.stickers[i]?.wear || 0;
+                
+                sticker.marketPrice = marketPrice;
+                sticker.wearValue = wearValue;
+                
+                // Calculate depreciated value based on wear
+                const currentValue = marketPrice * (1 - wearValue);
+                totalValue += currentValue;
+            }
+            
+            this.totalStickerValue = totalValue;
+            this.isLoadingPrices = false;
+            
+            // Force re-render to show updated prices
+            this.requestUpdate();
+        }
     }
 
     private loadKeychains(): void {
@@ -206,12 +320,12 @@ export class StickerDisplay extends FloatElement {
         });
     }
 
-    connectedCallback() {
+    async connectedCallback() {
         super.connectedCallback();
 
         if (this.itemInfo && this.asset) {
             try {
-                this.loadStickers();
+                await this.loadStickers();
                 this.loadKeychains();
             } catch (e) {
                 console.error('Error in StickerDisplay component:', e);

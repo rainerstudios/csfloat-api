@@ -1,4 +1,5 @@
 // Enhanced background script for CS2 Float Checker Pro
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('CS2 Float Checker Pro installed/updated');
   
@@ -82,7 +83,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
         
-        // Use production API (following CSFloat's approach)
+        // Use CS2FloatChecker API (same as CSFloat)
         try {
           const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
           console.log('Fetching from API:', apiUrl);
@@ -101,7 +102,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             
             sendResponse(data);
           } else {
-            // CSFloat style error handling - throw the API's error message
+            // Handle API errors
             console.error('API error:', data.error || `HTTP ${response.status}`);
             sendResponse({ error: data.error || `API returned status ${response.status}` });
           }
