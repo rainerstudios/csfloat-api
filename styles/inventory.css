@@ -1,20 +1,28 @@
+/* Ensure inventory item containers are positioned relatively */
+.inventory_page .item,
+.inventory_page .itemHolder,
+[id*="730_2_"] {
+  position: relative;
+}
+
 .item-info {
   font-family: Roboto;
   position: absolute;
-  bottom: 0;
-  right: 0;
+  bottom: 2px;
+  right: 2px;
   display: flex;
   flex-direction: column;
+  z-index: 10;
 }
 
 .item-info-paintseed {
   font-family: Roboto;
   position: absolute;
-  top: 4px;
-  right: 3px;
+  top: 2px;
+  right: 2px;
   display: flex;
   flex-direction: column;
-  z-index: 10;
+  z-index: 11;
 }
 
 .item-info .float-data {

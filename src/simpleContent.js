@@ -692,12 +692,26 @@
                 const defindex = itemInfo?.defindex || 0;
                 const paintindex = itemInfo?.paintindex || 0;
                 
-                // Melee weapons and some items don't have float values
-                const isMeleeWeapon = weaponType.includes('|') && weaponType.includes('Sabre') || 
-                                     weaponType.includes('Knife') || 
-                                     defindex >= 500 && defindex < 520; // Common melee weapon defindex range
+                // Items that don't have float values
+                const isMeleeWeapon = weaponType.includes('|') && (
+                    weaponType.includes('Sabre') || 
+                    weaponType.includes('Knife') || 
+                    weaponType.includes('Bayonet') ||
+                    weaponType.includes('Karambit')
+                ) || defindex >= 500 && defindex < 520; // Common melee weapon defindex range
                 
-                const hasNoSkin = paintindex === 0;
+                const isNonFloatItem = 
+                    weaponType.includes('Sticker |') ||           // Stickers
+                    weaponType.includes('Patch |') ||            // Patches  
+                    weaponType.includes('Music Kit |') ||        // Music kits
+                    weaponType.includes('Sealed Graffiti |') ||  // Graffiti
+                    weaponType.includes('Case') ||               // Cases
+                    weaponType.includes('Key') ||                // Keys
+                    weaponType.includes('Tool') ||               // Tools
+                    defindex === 1201 ||                        // Agent skins
+                    paintindex === 0;                           // Items with no skin
+                
+                const hasNoFloat = isMeleeWeapon || isNonFloatItem;
                 
                 if (floatData && (floatValue !== undefined && floatValue > 0)) {
                     this.log(`✅ Float data received: ${floatValue}`);
@@ -720,7 +734,7 @@
                         this.addHoverTooltip(element, floatData);
                     }
                     
-                } else if (floatData && (isMeleeWeapon || hasNoSkin)) {
+                } else if (floatData && hasNoFloat) {
                     this.log(`✅ Melee weapon or item without float detected: ${weaponType}`);
                     
                     // Create special display for melee weapons
@@ -806,20 +820,33 @@
             
             // Create professional display matching competitor format
             if (type === 'inventory') {
-                // For inventory - overlay style like competitor
+                // For inventory - overlay style with better visibility
                 container.innerHTML = `
-                    <div class="item-info">
+                    <div class="item-info" style="z-index: 10;">
                         <div class="float-data">
                             <div class="item_row item_row__value">
-                                <span class="float-value" title="Click to copy float">${displayFloat}</span>
+                                <span class="float-value" title="Click to copy float" style="
+                                    background: rgba(0, 0, 0, 0.8);
+                                    color: #4CAF50;
+                                    padding: 2px 4px;
+                                    border-radius: 3px;
+                                    font-size: 11px;
+                                    font-weight: bold;
+                                ">${displayFloat}</span>
                             </div>
                         </div>
                     </div>
                     ${paintSeed ? `
-                    <div class="item-info-paintseed">
+                    <div class="item-info-paintseed" style="z-index: 11;">
                         <div class="float-data">
                             <div class="item_row item_row__transparent">
-                                <span class="paintseed">${paintSeed}</span>
+                                <span class="paintseed" style="
+                                    background: rgba(0, 0, 0, 0.8);
+                                    color: #8f98a0;
+                                    padding: 1px 3px;
+                                    border-radius: 2px;
+                                    font-size: 9px;
+                                ">#{paintSeed}</span>
                             </div>
                         </div>
                     </div>` : ''}
@@ -890,52 +917,83 @@
 
         createMeleeDisplay(itemInfo, type) {
             const container = document.createElement('div');
-            container.className = `cs2-float-display cs2-melee-${type}`;
+            container.className = `cs2-float-display cs2-special-${type}`;
             
-            const weaponType = itemInfo?.weapon_type || 'Melee Weapon';
+            const weaponType = itemInfo?.weapon_type || 'Unknown Item';
             const paintSeed = itemInfo?.paintseed || 0;
             const stickers = itemInfo?.stickers || [];
             const keychains = itemInfo?.keychains || [];
             
+            // Determine item type and emoji
+            let emoji = '🔶';
+            let itemTypeDisplay = 'Special Item';
+            let color = '#fbbf24';
+            
+            if (weaponType.includes('Sabre') || weaponType.includes('Knife') || weaponType.includes('Bayonet') || weaponType.includes('Karambit')) {
+                emoji = '🔪';
+                itemTypeDisplay = 'Melee';
+                color = '#fbbf24';
+            } else if (weaponType.includes('Sticker') || weaponType.includes('Patch')) {
+                emoji = '🏷️';
+                itemTypeDisplay = 'Sticker/Patch';
+                color = '#8b5cf6';
+            } else if (weaponType.includes('Music Kit')) {
+                emoji = '🎵';
+                itemTypeDisplay = 'Music Kit';
+                color = '#3b82f6';
+            } else if (weaponType.includes('Graffiti')) {
+                emoji = '🎨';
+                itemTypeDisplay = 'Graffiti';
+                color = '#f59e0b';
+            } else if (weaponType.includes('Case')) {
+                emoji = '📦';
+                itemTypeDisplay = 'Case';
+                color = '#6b7280';
+            } else if (weaponType.includes('Key')) {
+                emoji = '🔑';
+                itemTypeDisplay = 'Key';
+                color = '#f59e0b';
+            }
+            
             if (type === 'inventory') {
-                // For inventory - styled box
+                // For inventory - positioned overlay using CSS classes
                 container.innerHTML = `
-                    <div class="cs2-melee-info" style="
-                        background: linear-gradient(135deg, #1e2328, #323842);
-                        color: #c7d2fe;
-                        padding: 8px;
-                        margin: 4px 0;
-                        border-radius: 6px;
-                        border-left: 4px solid #fbbf24;
-                        font-size: 11px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                    ">
-                        <div class="melee-title" style="color: #fbbf24; font-weight: bold; margin-bottom: 4px;">
-                            🔪 ${weaponType}
+                    <div class="item-info" style="z-index: 10;">
+                        <div class="float-data">
+                            <div class="item_row item_row__value">
+                                <span class="special-item-type" style="
+                                    background: rgba(0, 0, 0, 0.8);
+                                    color: ${color};
+                                    padding: 2px 4px;
+                                    border-radius: 3px;
+                                    font-size: 10px;
+                                    font-weight: bold;
+                                    white-space: nowrap;
+                                ">${emoji} ${itemTypeDisplay}</span>
+                            </div>
                         </div>
-                        ${paintSeed > 0 ? `
-                            <div class="pattern-info" style="color: #8f98a0;">
-                                Pattern: <span style="color: #c7d2fe;">${paintSeed}</span>
-                            </div>
-                        ` : ''}
-                        ${stickers.length > 0 ? `
-                            <div class="stickers-info" style="color: #8f98a0; margin-top: 4px;">
-                                Stickers: ${stickers.length}
-                            </div>
-                        ` : ''}
-                        ${keychains.length > 0 ? `
-                            <div class="keychains-info" style="color: #8f98a0; margin-top: 4px;">
-                                Keychains: ${keychains.length}
-                            </div>
-                        ` : ''}
                     </div>
+                    ${paintSeed > 0 ? `
+                    <div class="item-info-paintseed" style="z-index: 11;">
+                        <div class="float-data">
+                            <div class="item_row item_row__transparent">
+                                <span class="paintseed" style="
+                                    background: rgba(0, 0, 0, 0.8);
+                                    color: #c7d2fe;
+                                    padding: 1px 3px;
+                                    border-radius: 2px;
+                                    font-size: 9px;
+                                ">#{paintSeed}</span>
+                            </div>
+                        </div>
+                    </div>` : ''}
                 `;
             } else {
                 // For market listings - inline text style
                 container.innerHTML = `
-                    <div class="cs2-market-melee" style="
+                    <div class="cs2-market-special" style="
                         background: transparent; 
-                        color: #fbbf24; 
+                        color: ${color}; 
                         padding: 2px 0; 
                         margin: 2px 0; 
                         border-radius: 0; 
@@ -944,7 +1002,7 @@
                         border: none;
                         box-shadow: none;
                     ">
-                        🔪 Melee Weapon${paintSeed > 0 ? ` • Pattern: ${paintSeed}` : ''}
+                        ${emoji} ${itemTypeDisplay}${paintSeed > 0 ? ` • #${paintSeed}` : ''}
                     </div>
                 `;
             }
