@@ -687,7 +687,19 @@
                 const itemInfo = floatData?.iteminfo || floatData;
                 const floatValue = itemInfo?.floatvalue || itemInfo?.float_value;
                 
-                if (floatData && floatValue !== undefined) {
+                // Check if this is a melee weapon or other item type without float
+                const weaponType = itemInfo?.weapon_type || '';
+                const defindex = itemInfo?.defindex || 0;
+                const paintindex = itemInfo?.paintindex || 0;
+                
+                // Melee weapons and some items don't have float values
+                const isMeleeWeapon = weaponType.includes('|') && weaponType.includes('Sabre') || 
+                                     weaponType.includes('Knife') || 
+                                     defindex >= 500 && defindex < 520; // Common melee weapon defindex range
+                
+                const hasNoSkin = paintindex === 0;
+                
+                if (floatData && (floatValue !== undefined && floatValue > 0)) {
                     this.log(`✅ Float data received: ${floatValue}`);
                     
                     // Create float display
@@ -706,6 +718,19 @@
                     // Skip hover tooltip for market listings to avoid conflicts with Steam's native hover
                     if (type !== 'market') {
                         this.addHoverTooltip(element, floatData);
+                    }
+                    
+                } else if (floatData && (isMeleeWeapon || hasNoSkin)) {
+                    this.log(`✅ Melee weapon or item without float detected: ${weaponType}`);
+                    
+                    // Create special display for melee weapons
+                    const meleeDisplay = this.createMeleeDisplay(itemInfo, type);
+                    
+                    // Position it correctly for market listings
+                    if (type === 'market' && insertTarget !== element) {
+                        insertTarget.parentNode.insertBefore(meleeDisplay, insertTarget.nextSibling);
+                    } else {
+                        element.appendChild(meleeDisplay);
                     }
                     
                 } else {
@@ -857,6 +882,70 @@
                     z-index: 1000;
                     border: 1px solid #22c55e;
                     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+                `;
+            }
+            
+            return container;
+        },
+
+        createMeleeDisplay(itemInfo, type) {
+            const container = document.createElement('div');
+            container.className = `cs2-float-display cs2-melee-${type}`;
+            
+            const weaponType = itemInfo?.weapon_type || 'Melee Weapon';
+            const paintSeed = itemInfo?.paintseed || 0;
+            const stickers = itemInfo?.stickers || [];
+            const keychains = itemInfo?.keychains || [];
+            
+            if (type === 'inventory') {
+                // For inventory - styled box
+                container.innerHTML = `
+                    <div class="cs2-melee-info" style="
+                        background: linear-gradient(135deg, #1e2328, #323842);
+                        color: #c7d2fe;
+                        padding: 8px;
+                        margin: 4px 0;
+                        border-radius: 6px;
+                        border-left: 4px solid #fbbf24;
+                        font-size: 11px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    ">
+                        <div class="melee-title" style="color: #fbbf24; font-weight: bold; margin-bottom: 4px;">
+                            🔪 ${weaponType}
+                        </div>
+                        ${paintSeed > 0 ? `
+                            <div class="pattern-info" style="color: #8f98a0;">
+                                Pattern: <span style="color: #c7d2fe;">${paintSeed}</span>
+                            </div>
+                        ` : ''}
+                        ${stickers.length > 0 ? `
+                            <div class="stickers-info" style="color: #8f98a0; margin-top: 4px;">
+                                Stickers: ${stickers.length}
+                            </div>
+                        ` : ''}
+                        ${keychains.length > 0 ? `
+                            <div class="keychains-info" style="color: #8f98a0; margin-top: 4px;">
+                                Keychains: ${keychains.length}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            } else {
+                // For market listings - inline text style
+                container.innerHTML = `
+                    <div class="cs2-market-melee" style="
+                        background: transparent; 
+                        color: #fbbf24; 
+                        padding: 2px 0; 
+                        margin: 2px 0; 
+                        border-radius: 0; 
+                        font-size: 11px;
+                        font-weight: bold;
+                        border: none;
+                        box-shadow: none;
+                    ">
+                        🔪 Melee Weapon${paintSeed > 0 ? ` • Pattern: ${paintSeed}` : ''}
+                    </div>
                 `;
             }
             
