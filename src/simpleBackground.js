@@ -1,5 +1,28 @@
 // Enhanced background script for CS2 Float Checker Pro
 
+// Simple rate limiting to prevent "too many pending requests"
+let lastRequestTime = 0;
+let requestCount = 0;
+const MAX_REQUESTS_PER_SECOND = 3;
+const REQUEST_WINDOW = 1000; // 1 second
+
+function canMakeRequest() {
+  const now = Date.now();
+  
+  // Reset counter if more than 1 second has passed
+  if (now - lastRequestTime > REQUEST_WINDOW) {
+    requestCount = 0;
+    lastRequestTime = now;
+  }
+  
+  return requestCount < MAX_REQUESTS_PER_SECOND;
+}
+
+function recordRequest() {
+  requestCount++;
+  lastRequestTime = Date.now();
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('CS2 Float Checker Pro installed/updated');
   
@@ -83,10 +106,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           return;
         }
         
+        // Check rate limit before making request
+        if (!canMakeRequest()) {
+          console.log('Rate limit exceeded, delaying request');
+          sendResponse({ error: 'Rate limit exceeded, please try again in a moment' });
+          return;
+        }
+        
         // Use CS2FloatChecker API (same as CSFloat)
         try {
           const apiUrl = `https://api.cs2floatchecker.com/?url=${encodeURIComponent(request.inspectLink)}`;
           console.log('Fetching from API:', apiUrl);
+          
+          // Record the request for rate limiting
+          recordRequest();
           
           const response = await fetch(apiUrl);
           const data = await response.json();
