@@ -3,21 +3,27 @@
 // Bulk request queue for efficient API usage
 let bulkQueue = [];
 let bulkTimer = null;
-const BULK_DELAY = 2000; // 2 second delay before processing bulk requests
-const BULK_SIZE = 10; // Maximum items per bulk request
+const BULK_DELAY = 5000; // 5 second delay before processing bulk requests
+const BULK_SIZE = 5; // Reduced batch size to 5 items per request
 
 // Enhanced rate limiting with exponential backoff to prevent "too many pending requests"
 let lastRequestTime = 0;
 let requestCount = 0;
 let requestQueue = [];
 let isProcessingQueue = false;
-const MAX_REQUESTS_PER_SECOND = 2; // Reduced to be more conservative
+const MAX_REQUESTS_PER_SECOND = 1; // Very conservative - only 1 request per second
 const REQUEST_WINDOW = 1000; // 1 second
 const MAX_RETRIES = 3;
-const BASE_DELAY = 1000; // 1 second base delay for exponential backoff
+const BASE_DELAY = 2000; // 2 second base delay for exponential backoff
+const GLOBAL_REQUEST_DELAY = 1500; // Global delay between any API requests
 
 function canMakeRequest() {
   const now = Date.now();
+  
+  // Check if enough time has passed since last request (global delay)
+  if (now - lastRequestTime < GLOBAL_REQUEST_DELAY) {
+    return false;
+  }
   
   // Reset counter if more than 1 second has passed
   if (now - lastRequestTime > REQUEST_WINDOW) {
@@ -73,6 +79,14 @@ async function makeApiRequestWithRetry(url, retryCount = 0) {
 
 // Bulk API request function
 async function makeBulkApiRequest(links) {
+  // Ensure we respect global rate limiting for bulk requests too
+  if (!canMakeRequest()) {
+    console.log('Rate limit exceeded for bulk request, waiting...');
+    await new Promise(resolve => setTimeout(resolve, GLOBAL_REQUEST_DELAY));
+  }
+  
+  recordRequest(); // Record the bulk request
+  
   try {
     const response = await fetch('https://api.cs2floatchecker.com/bulk', {
       method: 'POST',
@@ -144,11 +158,14 @@ async function processBulkQueue() {
       }
     }
   } else {
-    // Handle bulk request failure - fall back to individual requests
+    // Handle bulk request failure - fall back to individual requests with staggered delays
     console.log('Bulk request failed, falling back to individual requests:', result.error);
-    for (const item of batch) {
-      // Add back to individual processing
-      processSingleRequest(item.inspectLink, item.sendResponse);
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i];
+      // Stagger individual requests to avoid overwhelming API
+      setTimeout(() => {
+        processSingleRequest(item.inspectLink, item.sendResponse);
+      }, i * GLOBAL_REQUEST_DELAY); // Each request delayed by 1.5s * index
     }
   }
 
@@ -173,11 +190,20 @@ async function processSingleRequest(inspectLink, sendResponse) {
       return;
     }
 
-    // Check rate limit
+    // Check rate limit and wait if necessary
     if (!canMakeRequest()) {
-      console.log('Rate limit exceeded, delaying request');
-      sendResponse({ error: 'Rate limit exceeded, please try again in a moment' });
-      return;
+      const waitTime = GLOBAL_REQUEST_DELAY - (Date.now() - lastRequestTime);
+      console.log(`Rate limit exceeded, waiting ${waitTime}ms before request`);
+      if (waitTime > 0) {
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      
+      // Check again after waiting
+      if (!canMakeRequest()) {
+        console.log('Still rate limited after waiting, rejecting request');
+        sendResponse({ error: 'Rate limit exceeded, please try again later' });
+        return;
+      }
     }
 
     // Use single API request with retry logic
