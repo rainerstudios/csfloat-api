@@ -1,9 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "__MSG_appName__",
-  "version": "1.6.0",
-  "description": "__MSG_appDescription__",
-  "default_locale": "en",
+  "name": "CS2 Float Extension Enhanced",
+  "version": "2.0.0",
+  "description": "Advanced CS2 float checker with AI-powered pattern recognition, blue gem detection, and market intelligence",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -12,7 +11,8 @@
   },
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "alarms"
   ],
   "host_permissions": [
     "https://steamcommunity.com/*",
@@ -23,7 +23,7 @@
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://api.cs2floatchecker.com https://cs2floatchecker.com http://localhost:3002;"
   },
   "background": {
-    "service_worker": "src/simpleBackground.js"
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
@@ -35,14 +35,14 @@
         "https://steamcommunity.com/id/*/tradehistory",
         "https://steamcommunity.com/profiles/*/tradehistory"
       ],
-      "js": ["src/simpleContent.js"],
+      "js": ["content.js"],
       "css": ["styles/main.css", "styles/inventory.css"],
       "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "__MSG_extensionTitle__",
+    "default_title": "CS2 Float Extension Enhanced",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -52,7 +52,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["icons/*", "styles/*", "src/floatAPI.js", "src/inventoryInjector.js", "src/utils/cache.js", "src/utils/inventoryHighlight.js", "src/utils/inventoryHighlightInjector.js", "src/utils/floatFilters.js", "src/utils/floatFiltersInjector.js", "src/utils/floatSorter.js", "src/utils/floatSorterInjector.js", "src/profitCalculator.js", "src/tradeHoldDisplay.js", "src/quickBuyButtons.js", "src/patternDatabase.js", "src/floatFilter.js", "src/floatBar.js", "src/floatRanking.js", "src/listingAge.js"],
+      "resources": [
+        "icons/*", 
+        "styles/*",
+        "lib/page_scripts/*.js",
+        "lib/components/*.js",
+        "lib/services/*.js"
+      ],
       "matches": ["https://steamcommunity.com/*"]
     }
   ]

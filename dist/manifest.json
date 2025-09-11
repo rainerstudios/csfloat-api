@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "CS2 Float Extension Enhanced",
+  "version": "2.0.0",
+  "description": "Advanced CS2 float checker with pattern recognition",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://steamcommunity.com/*",
+    "https://api.cs2floatchecker.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://steamcommunity.com/market/*",
+        "https://steamcommunity.com/id/*/inventory*",
+        "https://steamcommunity.com/profiles/*/inventory*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles/main.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CS2 Float Extension Enhanced"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["floatSorter.js"],
+      "matches": ["https://steamcommunity.com/*"]
+    }
+  ]
+}

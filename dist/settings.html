@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>CS2 Float Extension Settings</title>
+    <style>
+        body {
+            width: 450px;
+            max-height: 600px;
+            overflow-y: auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            margin: 0;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            padding-bottom: 15px;
+        }
+        
+        .title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .version {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .section {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 5px;
+        }
+        
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding: 8px 0;
+        }
+        
+        .setting-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .setting-label {
+            flex: 1;
+            font-size: 13px;
+        }
+        
+        .setting-description {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-top: 3px;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 24px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #4CAF50;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .toggle-switch.active .toggle-slider {
+            left: 28px;
+        }
+        
+        .range-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .range-control input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            cursor: pointer;
+        }
+        
+        .range-value {
+            min-width: 30px;
+            text-align: center;
+            font-size: 12px;
+            background: rgba(0,0,0,0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+        
+        button.primary {
+            background: #4CAF50;
+        }
+        
+        button.primary:hover {
+            background: #45a049;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .stat-box {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">CS2 Float Extension Settings</div>
+        <div class="version">Enhanced v2.0.0</div>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">🔍 Analysis Features</div>
+        
+        <div class="setting-item">
+            <div class="setting-label">
+                Pattern Analysis
+                <div class="setting-description">Detect special patterns like blue gems and fades</div>
+            </div>
+            <div class="toggle-switch" id="enablePatternAnalysis">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+        
+        <div class="setting-item">
+            <div class="setting-label">
+                Blue Gem Detection
+                <div class="setting-description">Analyze Case Hardened patterns for blue percentage</div>
+            </div>
+            <div class="toggle-switch" id="enableBlueGemDetection">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+        
+        <div class="setting-item">
+            <div class="setting-label">
+                Market Intelligence
+                <div class="setting-description">Investment scoring and market trend analysis</div>
+            </div>
+            <div class="toggle-switch" id="enableMarketIntelligence">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+        
+        <div class="setting-item">
+            <div class="setting-label">
+                Visual Float Bars
+                <div class="setting-description">Show gradient float bars with wear ranges</div>
+            </div>
+            <div class="toggle-switch" id="enableVisualFloatBars">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+        
+        <div class="setting-item">
+            <div class="setting-label">
+                Percentile Rankings
+                <div class="setting-description">Show float percentile within item category</div>
+            </div>
+            <div class="toggle-switch" id="showPercentileRank">
+                <div class="toggle-slider"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">⚙️ Display Settings</div>
+        
+        <div class="setting-item">
+            <div class="setting-label">
+                Float Precision
+                <div class="setting-description">Number of decimal places to show</div>
+            </div>
+            <div class="range-control">
+                <input type="range" id="floatPrecision" min="2" max="8" value="6">
+                <div class="range-value" id="floatPrecisionValue">6</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <div class="section-title">📊 Extension Statistics</div>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-number" id="itemsAnalyzed">0</div>
+                <div class="stat-label">Items Analyzed</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number" id="blueGemsDetected">0</div>
+                <div class="stat-label">Blue Gems Found</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number" id="topTierFloatsFound">0</div>
+                <div class="stat-label">Top Tier Floats</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number" id="extensionVersion">2.0.0</div>
+                <div class="stat-label">Version</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="actions">
+        <button id="resetSettings">Reset to Defaults</button>
+        <button id="clearAllData">Clear All Data</button>
+        <button id="saveSettings" class="primary">Save Settings</button>
+    </div>
+    
+    <script src="settings.js"></script>
+</body>
+</html>
