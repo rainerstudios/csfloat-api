@@ -17,27 +17,35 @@ let processedItems = new Set();
 function loadFloatSorter() {
   // Check if already loaded
   if (window.FloatSorter) {
+    console.log('FloatSorter already loaded');
     return;
   }
 
   // Inject the float sorter script
   const script = document.createElement('script');
-  script.type = 'module';
-  script.textContent = `
-    import { FloatSorter } from '${chrome.runtime.getURL('floatSorter.js')}';
-    window.FloatSorter = FloatSorter;
+  script.src = chrome.runtime.getURL('floatSorter.js');
+  script.onload = () => {
+    console.log('✅ FloatSorter script loaded');
     
     // Auto-initialize on CS2 item listing pages
     if (window.location.href.includes('/market/listings/') && !window.location.href.includes('/market/search')) {
       console.log('🎯 CS2 item listing detected, initializing FloatSorter...');
       setTimeout(() => {
-        new FloatSorter();
+        if (window.FloatSorter) {
+          new window.FloatSorter();
+          console.log('✅ FloatSorter initialized');
+        } else {
+          console.error('❌ FloatSorter class not available');
+        }
       }, 2000);
     }
-  `;
+  };
+  script.onerror = (error) => {
+    console.error('❌ Error loading FloatSorter script:', error);
+  };
   
   (document.head || document.documentElement).appendChild(script);
-  console.log('✅ FloatSorter loaded');
+  console.log('📜 FloatSorter script injected');
 }
 
 /**

@@ -3,7 +3,7 @@
  * Provides Min Float, Max Float filtering and Sort by Float functionality
  */
 
-export class FloatSorter {
+class FloatSorter {
     constructor() {
         this.sortDirection = 'none'; // none, asc, desc
         this.minFloatValue = '';
@@ -369,9 +369,5 @@ export class FloatSorter {
     }
 }
 
-// Make available globally for non-module usage
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { FloatSorter };
-} else {
-    window.FloatSorter = FloatSorter;
-}
+// Make available globally
+window.FloatSorter = FloatSorter;
