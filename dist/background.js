@@ -40,38 +40,8 @@ function getWeaponName(defindex) {
   return weapons[defindex] || `Weapon ${defindex}`;
 }
 
-/**
- * Detect blue gems for Case Hardened items
- */
-function analyzeBlueGem(paintindex, paintseed) {
-  if (paintindex !== 44) return null; // Not Case Hardened
-  
-  // Known blue gem seeds for different weapons
-  const knownBlueGems = {
-    661: { blue: 95, tier: 'Tier 1' },
-    670: { blue: 92, tier: 'Tier 1' },
-    555: { blue: 90, tier: 'Tier 1' },
-    179: { blue: 88, tier: 'Tier 1' }
-  };
-  
-  if (knownBlueGems[paintseed]) {
-    return {
-      bluePercentage: knownBlueGems[paintseed].blue,
-      tier: knownBlueGems[paintseed].tier,
-      estimatedValue: { min: 2000, max: 8000 }
-    };
-  }
-  
-  // Calculate blue percentage for unknown patterns
-  const bluePercentage = 30 + (paintseed % 50);
-  const tier = bluePercentage >= 80 ? 'Tier 1' : bluePercentage >= 60 ? 'Tier 2' : 'Tier 3';
-  
-  return {
-    bluePercentage,
-    tier,
-    estimatedValue: { min: bluePercentage * 10, max: bluePercentage * 30 }
-  };
-}
+// Blue gem detection removed - requires proper database or API support
+// CSGOFloat API doesn't provide blue percentage data directly
 
 /**
  * Calculate investment score
@@ -86,8 +56,7 @@ function calculateInvestmentScore(floatValue, rarity, blueGemInfo) {
   if (floatValue < 0.01) score += 2;
   else if (floatValue < 0.07) score += 1;
   
-  // Blue gem bonus
-  if (blueGemInfo && blueGemInfo.bluePercentage > 80) score += 3;
+  // Blue gem bonus removed - not available without proper API
   
   return Math.min(Math.max(score, 1), 10);
 }
@@ -130,8 +99,8 @@ async function processFloatRequest(inspectLink, precision = 4) {
   const rawData = await fetchFloatData(inspectLink);
   if (!rawData) return null;
   
-  // Analyze blue gem
-  const blueGemInfo = analyzeBlueGem(rawData.paintindex, rawData.paintseed);
+  // Blue gem analysis not available without proper API support
+  const blueGemInfo = null;
   
   // Calculate float percentile (mock)
   const floatPercentile = 50 + Math.random() * 40; // Mock percentile
@@ -148,7 +117,7 @@ async function processFloatRequest(inspectLink, precision = 4) {
     stickers: rawData.stickers || [],
     statTrakKills: rawData.killeatervalue,
     floatPercentile: floatPercentile,
-    investmentScore: calculateInvestmentScore(rawData.floatvalue, rawData.rarity, blueGemInfo),
+    investmentScore: calculateInvestmentScore(rawData.floatvalue, rawData.rarity, null),
     blueGemInfo: blueGemInfo,
     min: rawData.min,
     max: rawData.max,
@@ -287,9 +256,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const stats = result.enhancedStats || {};
             stats.itemsAnalyzed = (stats.itemsAnalyzed || 0) + 1;
             
-            if (enhancedData.blueGemInfo) {
-              stats.blueGemsDetected = (stats.blueGemsDetected || 0) + 1;
-            }
+            // Blue gem detection removed
             
             if (enhancedData.floatPercentile && enhancedData.floatPercentile >= 95) {
               stats.topTierFloatsFound = (stats.topTierFloatsFound || 0) + 1;
@@ -369,7 +336,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         await chrome.storage.local.set({ 
           enhancedStats: {
             itemsAnalyzed: 0,
-            blueGemsDetected: 0,
+            // blueGemsDetected removed - not available
             topTierFloatsFound: 0,
             extensionVersion: '2.0.0',
             installDate: new Date().toISOString()

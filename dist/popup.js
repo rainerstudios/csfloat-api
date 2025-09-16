@@ -7,7 +7,7 @@ let currentSettings = {};
 // Default settings
 const defaultSettings = {
   enablePatternAnalysis: true,
-  enableBlueGemDetection: true,
+  // enableBlueGemDetection removed - not available without proper API,
   enableMarketIntelligence: true,
   enableVisualFloatBars: true,
   showPercentileRank: true,
@@ -49,7 +49,7 @@ async function loadData() {
  */
 function updateStats(stats) {
   document.getElementById('itemsAnalyzed').textContent = stats.itemsAnalyzed || 0;
-  document.getElementById('blueGemsDetected').textContent = stats.blueGemsDetected || 0;
+  // Blue gems detection stat removed - not tracked
   document.getElementById('topTierFloatsFound').textContent = stats.topTierFloatsFound || 0;
 }
 
@@ -202,13 +202,7 @@ async function checkManualFloat() {
         resultHTML += `<div style="margin-bottom: 6px;"><strong>Pattern:</strong> #${data.paintSeed}</div>`;
       }
       
-      if (data.blueGemInfo) {
-        resultHTML += `
-          <div style="background: rgba(0,100,255,0.2); padding: 6px; border-radius: 4px; margin: 6px 0;">
-            💎 <strong>Blue Gem:</strong> ${data.blueGemInfo.bluePercentage}% (${data.blueGemInfo.tier})
-          </div>
-        `;
-      }
+      // Blue gem info removed - not available without proper API
       
       if (data.investmentScore) {
         const scoreColor = data.investmentScore >= 7 ? '#22c55e' : 

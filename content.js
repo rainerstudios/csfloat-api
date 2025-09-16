@@ -356,14 +356,7 @@ async function addFloatDisplay(itemElement, floatData) {
     displayHtml += `<div class="cs2-pattern-copyable" style="opacity: 0.9; cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy pattern seed">Pattern: #${floatData.paintSeed}</div>`;
   }
 
-  // Add blue gem info if blue gem detection is enabled
-  if (settings.enableBlueGemDetection !== false && floatData.blueGemInfo) {
-    displayHtml += `
-      <div style="background: rgba(0,100,255,0.3); padding: 4px 8px; border-radius: 4px;">
-        💎 ${floatData.blueGemInfo.bluePercentage}% Blue
-      </div>
-    `;
-  }
+  // Blue gem detection removed - requires proper API support
 
   // Add investment score if market intelligence is enabled
   if (settings.enableMarketIntelligence !== false && floatData.investmentScore) {
