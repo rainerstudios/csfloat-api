@@ -510,6 +510,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // Handle debug request for all item names
+  if (request.action === 'debugGetAllItemNames') {
+    (async () => {
+      try {
+        const data = await chrome.storage.local.get();
+        const itemNames = Object.keys(data)
+          .filter(key => key.startsWith('priceHistory_'))
+          .map(key => {
+            const itemData = data[key];
+            return {
+              key: key.replace('priceHistory_', '').replace(/_/g, ' '),
+              originalName: itemData.itemName,
+              dataPoints: itemData.priceHistory ? itemData.priceHistory.length : 0
+            };
+          });
+
+        sendResponse({
+          success: true,
+          itemNames: itemNames
+        });
+      } catch (error) {
+        console.error('Debug get all items error:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+
   return false;
 });
 

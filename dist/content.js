@@ -121,7 +121,18 @@ async function trackItemPrice(itemElement, floatData) {
     if (!priceMatch) return;
 
     const price = parseFloat(priceMatch[0].replace(',', '.'));
-    const itemName = floatData.fullItemName || floatData.skinName || 'Unknown Item';
+
+    // Try multiple strategies to get a consistent item name
+    let itemName = floatData.fullItemName || floatData.skinName || 'Unknown Item';
+
+    // Also try to get the name from the market listing element
+    const marketItemNameEl = itemElement.querySelector('.market_listing_item_name');
+    const marketItemName = marketItemNameEl ? marketItemNameEl.textContent.trim() : null;
+
+    // Use market listing name if available, otherwise use float data name
+    if (marketItemName && marketItemName !== 'Unknown Item') {
+      itemName = marketItemName;
+    }
 
     // Get inspect link for tracking
     const inspectBtn = itemElement.querySelector('a[href*="steam://rungame/730"]');
@@ -617,7 +628,10 @@ function initialize() {
     // Add floating price alert toggle
     setTimeout(() => {
       createFloatingAlertButton();
-      createMarketIntelligenceButton();
+      // createMarketIntelligenceButton(); // Disabled - now integrated into item info panel
+      if (window.MarketIntelligence) {
+        window.MarketIntelligence.integrateMarketIntelligenceIntoItemInfo();
+      }
     }, 1500);
 
     // Process items after a short delay
@@ -1046,17 +1060,14 @@ async function loadMarketIntelligence() {
   contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading market data...</div>';
 
   try {
-    // Get current item name
+    // Get current item name using the same method as the working floating button
     const itemNameElement = document.querySelector('.market_listing_largeimage .market_listing_item_name') ||
-                           document.querySelector('h1.market_listing_item_name') ||
-                           document.querySelector('.market_listing_item_name');
+                           document.querySelector('.market_listing_item_name') ||
+                           document.querySelector('h1');
 
-    const itemName = itemNameElement ? itemNameElement.textContent.trim() : null;
+    const itemName = itemNameElement ? itemNameElement.textContent.trim() : 'Current Item';
 
-    if (!itemName) {
-      contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">No item data available</div>';
-      return;
-    }
+    console.log('📊 Looking for market data for item:', itemName);
 
     // Request price history from background
     const response = await chrome.runtime.sendMessage({
