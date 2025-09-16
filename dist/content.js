@@ -667,6 +667,13 @@ function initialize() {
   if (window.location.pathname.includes('/inventory')) {
     console.log('📦 Inventory page detected');
     initializeInventoryChecker();
+
+    // Initialize the enhanced inventory system
+    if (window.InventoryEnhancer) {
+      setTimeout(() => {
+        window.InventoryEnhancer.initializeInventoryEnhancer();
+      }, 1000);
+    }
   }
 }
 
