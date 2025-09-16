@@ -1,374 +1,301 @@
-document.addEventListener('DOMContentLoaded', () => {
-  loadSettings();
-  loadStats();
-  setupEventListeners();
-});
+/**
+ * CS2 Float Extension - Enhanced Integrated Popup
+ */
 
-function loadSettings() {
-  chrome.storage.local.get(['settings'], (result) => {
-    const settings = result.settings || getDefaultSettings();
-    
-    updateToggle('enableMarket', settings.enableMarket);
-    updateToggle('enableInventory', settings.enableInventory);
-    updateToggle('autoLoad', settings.autoLoad);
-    updateToggle('showStickers', settings.showStickers);
-    updateToggle('showKeychains', settings.showKeychains);
-    updateToggle('highlightLow', settings.highlightLowFloat);
-    updateToggle('highlightHigh', settings.highlightHighFloat);
-    updateToggle('highlightOwned', settings.highlightOwned);
-    updateToggle('enableFloatFilters', settings.enableFloatFilters);
-    
-    
-    const floatPrecisionElement = document.getElementById('floatPrecision');
-    const floatPrecisionSlider = document.getElementById('floatPrecisionSlider');
-    if (floatPrecisionElement && floatPrecisionSlider) {
-      const precision = settings.floatPrecision || 0;
-      const sliderValue = precision === 0 ? 7 : precision;
-      floatPrecisionElement.value = sliderValue;
-      floatPrecisionSlider.value = sliderValue;
-      updateSliderLabels(sliderValue);
+let currentSettings = {};
+
+// Default settings
+const defaultSettings = {
+  enablePatternAnalysis: true,
+  enableBlueGemDetection: true,
+  enableMarketIntelligence: true,
+  enableVisualFloatBars: true,
+  showPercentileRank: true,
+  floatPrecision: 4,
+  cacheExpiry: 24,
+  language: 'en'
+};
+
+/**
+ * Load settings and stats from storage
+ */
+async function loadData() {
+  try {
+    // Load settings
+    const settingsResponse = await chrome.runtime.sendMessage({ action: 'getSettings' });
+    if (settingsResponse && settingsResponse.settings) {
+      currentSettings = { ...defaultSettings, ...settingsResponse.settings };
+    } else {
+      currentSettings = { ...defaultSettings };
     }
-    
-    const cacheExpiryElement = document.getElementById('cacheExpiry');
-    if (cacheExpiryElement) {
-      cacheExpiryElement.value = settings.cacheExpiry || 24;
+
+    // Load stats  
+    const statsResponse = await chrome.runtime.sendMessage({ action: 'getStats' });
+    if (statsResponse && statsResponse.stats) {
+      updateStats(statsResponse.stats);
     }
+
+    updateSettingsUI();
     
-    const languageElement = document.getElementById('language');
-    if (languageElement) {
-      languageElement.value = settings.language || 'en';
-    }
-  });
-}
-
-function loadStats() {
-  chrome.storage.local.get(['stats'], (result) => {
-    const stats = result.stats || { itemsChecked: 0, cacheSize: 0 };
-    document.getElementById('itemsChecked').textContent = stats.itemsChecked;
-    document.getElementById('cacheSize').textContent = stats.cacheSize;
-  });
-}
-
-function getDefaultSettings() {
-  return {
-    enableMarket: true,
-    enableInventory: true,
-    autoLoad: true,
-    showStickers: true,
-    showKeychains: true,
-    highlightLowFloat: true,
-    highlightHighFloat: true,
-    highlightOwned: true,
-    enableFloatFilters: true,
-    lowFloatThreshold: 0.07,
-    highFloatThreshold: 0.93,
-    showFloatRank: true,
-    showPaintSeed: true,
-    floatPrecision: 0,
-    cacheExpiry: 24,
-    language: 'en'
-  };
-}
-
-function updateToggle(id, value) {
-  const toggle = document.getElementById(id);
-  if (value) {
-    toggle.classList.add('active');
-  } else {
-    toggle.classList.remove('active');
+  } catch (error) {
+    console.error('Failed to load data:', error);
+    currentSettings = { ...defaultSettings };
+    updateSettingsUI();
   }
 }
 
-function setupEventListeners() {
+/**
+ * Update stats display
+ */
+function updateStats(stats) {
+  document.getElementById('itemsAnalyzed').textContent = stats.itemsAnalyzed || 0;
+  document.getElementById('blueGemsDetected').textContent = stats.blueGemsDetected || 0;
+  document.getElementById('topTierFloatsFound').textContent = stats.topTierFloatsFound || 0;
+}
+
+/**
+ * Update settings UI toggles and controls
+ */
+function updateSettingsUI() {
+  // Update toggles
+  Object.keys(currentSettings).forEach(key => {
+    const element = document.getElementById(key);
+    if (element && typeof currentSettings[key] === 'boolean') {
+      element.classList.toggle('active', currentSettings[key]);
+    }
+  });
+
+  // Update input fields
+  ['floatPrecision', 'cacheExpiry'].forEach(key => {
+    const element = document.getElementById(key);
+    if (element && currentSettings[key] !== undefined) {
+      element.value = currentSettings[key];
+    }
+  });
+
+  // Update language dropdown
+  const languageSelect = document.getElementById('language');
+  if (languageSelect && currentSettings.language) {
+    languageSelect.value = currentSettings.language;
+  }
+}
+
+/**
+ * Save settings to storage
+ */
+async function saveSettings() {
+  try {
+    await chrome.runtime.sendMessage({
+      action: 'saveSettings',
+      settings: currentSettings
+    });
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+  }
+}
+
+/**
+ * Clear cache
+ */
+async function clearCache() {
+  try {
+    await chrome.runtime.sendMessage({ action: 'clearCache' });
+    console.log('Cache cleared');
+  } catch (error) {
+    console.error('Failed to clear cache:', error);
+  }
+}
+
+/**
+ * Reload floats on current page
+ */
+async function reloadFloats() {
+  try {
+    // Get current active tab
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (tab && tab.url.includes('steamcommunity.com')) {
+      // Inject script to reload floats
+      await chrome.tabs.sendMessage(tab.id, { action: 'reloadFloats' });
+      
+      // Show feedback
+      const button = document.getElementById('reloadFloats');
+      const originalText = button.textContent;
+      button.textContent = '✓ Reloaded!';
+      button.style.background = '#22c55e';
+      
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.background = '';
+      }, 2000);
+    } else {
+      alert('Please navigate to the Steam Community Market or Inventory to use this feature.');
+    }
+  } catch (error) {
+    console.error('Failed to reload floats:', error);
+    alert('Failed to reload floats. Make sure you are on a Steam page.');
+  }
+}
+
+/**
+ * Check manual float
+ */
+async function checkManualFloat() {
+  const inspectLink = document.getElementById('manualInspect').value.trim();
+  const resultDiv = document.getElementById('manualResult');
+  
+  if (!inspectLink) {
+    alert('Please enter an inspect link');
+    return;
+  }
+  
+  if (!inspectLink.includes('steam://rungame/730')) {
+    alert('Please enter a valid CS2 inspect link');
+    return;
+  }
+  
+  try {
+    // Show loading
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div style="text-align: center;">🔍 Analyzing float...</div>';
+    
+    const response = await chrome.runtime.sendMessage({
+      action: 'fetchEnhancedFloat',
+      inspectLink: inspectLink
+    });
+    
+    if (response && response.enhancedData) {
+      const data = response.enhancedData;
+      
+      let resultHTML = `
+        <div style="border-bottom: 1px solid #3a3a3a; padding-bottom: 8px; margin-bottom: 8px;">
+          <strong>${data.weaponName || 'CS2 Item'}</strong>
+        </div>
+        <div style="margin-bottom: 6px;">
+          <strong>Float:</strong> ${data.floatValue.toFixed(6)} (${data.wearName})
+        </div>
+      `;
+      
+      if (data.paintSeed) {
+        resultHTML += `<div style="margin-bottom: 6px;"><strong>Pattern:</strong> #${data.paintSeed}</div>`;
+      }
+      
+      if (data.blueGemInfo) {
+        resultHTML += `
+          <div style="background: rgba(0,100,255,0.2); padding: 6px; border-radius: 4px; margin: 6px 0;">
+            💎 <strong>Blue Gem:</strong> ${data.blueGemInfo.bluePercentage}% (${data.blueGemInfo.tier})
+          </div>
+        `;
+      }
+      
+      if (data.investmentScore) {
+        const scoreColor = data.investmentScore >= 7 ? '#22c55e' : 
+                          data.investmentScore >= 5 ? '#fbbf24' : '#f97316';
+        resultHTML += `
+          <div style="margin-top: 6px;">
+            <strong>Investment Score:</strong> 
+            <span style="color: ${scoreColor}; font-weight: bold;">${data.investmentScore}/10</span>
+          </div>
+        `;
+      }
+      
+      if (data.floatPercentile) {
+        resultHTML += `
+          <div style="margin-top: 6px;">
+            <strong>Float Percentile:</strong> Top ${(100-data.floatPercentile).toFixed(1)}%
+          </div>
+        `;
+      }
+      
+      resultDiv.innerHTML = resultHTML;
+      
+    } else {
+      resultDiv.innerHTML = '<div style="color: #f87171;">❌ Failed to analyze float. Please check the inspect link.</div>';
+    }
+    
+  } catch (error) {
+    console.error('Manual float check error:', error);
+    resultDiv.innerHTML = '<div style="color: #f87171;">❌ Error analyzing float. Please try again.</div>';
+  }
+}
+
+/**
+ * Initialize popup
+ */
+function initialize() {
+  // Load current data
+  loadData();
+
+  // Setup toggle switches
   document.querySelectorAll('.toggle').forEach(toggle => {
     toggle.addEventListener('click', () => {
-      toggle.classList.toggle('active');
-      saveSettings();
-    });
-  });
-  
-  document.querySelectorAll('input[type="number"]').forEach(input => {
-    input.addEventListener('change', saveSettings);
-  });
-  
-  document.querySelectorAll('select').forEach(select => {
-    select.addEventListener('change', saveSettings);
-  });
-
-  // Setup precision slider
-  const precisionSlider = document.getElementById('floatPrecisionSlider');
-  if (precisionSlider) {
-    precisionSlider.addEventListener('input', (e) => {
-      const value = parseInt(e.target.value);
-      document.getElementById('floatPrecision').value = value;
-      updateSliderLabels(value);
-      saveSettings();
-    });
-  }
-
-  // Setup clickable labels
-  document.querySelectorAll('.slider-label').forEach(label => {
-    label.addEventListener('click', () => {
-      const value = parseInt(label.dataset.value);
-      precisionSlider.value = value;
-      document.getElementById('floatPrecision').value = value;
-      updateSliderLabels(value);
-      saveSettings();
-    });
-  });
-  
-  document.getElementById('reloadFloats').addEventListener('click', () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        const url = tabs[0].url;
-        console.log('Current URL:', url);
+      const settingKey = toggle.id;
+      if (settingKey in currentSettings && typeof currentSettings[settingKey] === 'boolean') {
+        currentSettings[settingKey] = !currentSettings[settingKey];
+        toggle.classList.toggle('active', currentSettings[settingKey]);
         
-        // Check if we're on a supported Steam page
-        if (!url.includes('steamcommunity.com/market/')) {
-          showNotification('Navigate to Steam Market first!', 'warning');
-          return;
-        }
-        
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'reloadFloats' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.log('Extension not active on this page:', chrome.runtime.lastError);
-            showNotification('Extension loading... Try refreshing the page!', 'warning');
-          } else if (response && response.success) {
-            showNotification('Floats reloaded successfully!');
-          } else {
-            showNotification('No items found on this page', 'info');
-          }
-        });
+        // Auto-save settings
+        saveSettings();
       }
     });
   });
-  
-  document.getElementById('clearCache').addEventListener('click', () => {
-    chrome.storage.local.remove(['floatCache'], () => {
-      chrome.storage.local.set({ stats: { itemsChecked: 0, cacheSize: 0 } });
-      loadStats();
-      showNotification('Cache cleared!');
+
+  // Setup input fields
+  ['floatPrecision', 'cacheExpiry'].forEach(key => {
+    const element = document.getElementById(key);
+    if (element) {
+      element.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+
+        if (!isNaN(value)) {
+          currentSettings[key] = value;
+          saveSettings();
+        }
+      });
+    }
+  });
+
+  // Setup language dropdown
+  const languageSelect = document.getElementById('language');
+  if (languageSelect) {
+    languageSelect.addEventListener('change', (e) => {
+      currentSettings.language = e.target.value;
+      saveSettings();
     });
+  }
+
+  // Setup action buttons
+  document.getElementById('reloadFloats').addEventListener('click', reloadFloats);
+  
+  document.getElementById('clearCache').addEventListener('click', async () => {
+    if (confirm('Clear all cached float data?')) {
+      await clearCache();
+      
+      // Show feedback
+      const button = document.getElementById('clearCache');
+      const originalText = button.textContent;
+      button.textContent = '✓ Cleared!';
+      button.style.background = '#22c55e';
+      
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.background = '';
+      }, 2000);
+    }
   });
   
-  document.getElementById('openSteam').addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://steamcommunity.com/market/search?appid=730' });
-  });
-  
-  // Manual inspect functionality
+  // Setup manual float check
   document.getElementById('checkManual').addEventListener('click', checkManualFloat);
+  
+  // Allow Enter key in manual input
   document.getElementById('manualInspect').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
       checkManualFloat();
     }
   });
+
+  console.log('🚀 CS2 Float Extension Popup loaded');
 }
 
-async function checkManualFloat() {
-  const inputElement = document.getElementById('manualInspect');
-  const resultElement = document.getElementById('manualResult');
-  const buttonElement = document.getElementById('checkManual');
-  const inspectLink = inputElement.value.trim();
-  
-  if (!inspectLink) {
-    showNotification('Please enter an inspect link', 'warning');
-    return;
-  }
-  
-  // Validate inspect link format
-  if (!inspectLink.startsWith('steam://rungame/730/')) {
-    showNotification('Invalid inspect link format', 'error');
-    return;
-  }
-  
-  // Show loading state
-  buttonElement.disabled = true;
-  buttonElement.textContent = 'Checking...';
-  resultElement.style.display = 'none';
-  
-  try {
-    // Call API directly from popup
-    const params = new URLSearchParams({ url: inspectLink });
-    const response = await fetch(`https://api.cs2floatchecker.com/?${params}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'CS2FLOAT-Extension/1.5.0'
-      }
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`API request failed: ${response.status} - ${errorText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.iteminfo) {
-      const floatData = processApiResponse(data);
-      displayManualResult(floatData);
-      showNotification('Float data loaded successfully!', 'success');
-    } else {
-      throw new Error('No item data received from API');
-    }
-  } catch (error) {
-    console.error('Manual float check failed:', error);
-    showNotification(`Error: ${error.message}`, 'error');
-    resultElement.style.display = 'none';
-  } finally {
-    // Reset button state
-    buttonElement.disabled = false;
-    buttonElement.textContent = 'Check Float';
-  }
-}
-
-function processApiResponse(data) {
-  const floatValue = data.iteminfo?.floatvalue;
-  const wear = data.iteminfo?.wear_name || getWearName(floatValue);
-  
-  return {
-    floatValue: floatValue,
-    paintSeed: data.iteminfo?.paintseed,
-    paintIndex: data.iteminfo?.paintindex,
-    defIndex: data.iteminfo?.defindex,
-    origin: data.iteminfo?.origin,
-    quality: data.iteminfo?.quality,
-    rarity: data.iteminfo?.rarity,
-    min: data.iteminfo?.min || 0,
-    max: data.iteminfo?.max || 1,
-    weaponType: data.iteminfo?.weapon_type,
-    itemName: data.iteminfo?.item_name || data.iteminfo?.full_item_name,
-    fullItemName: data.iteminfo?.full_item_name,
-    rarityName: data.iteminfo?.rarity_name,
-    qualityName: data.iteminfo?.quality_name,
-    originName: data.iteminfo?.origin_name,
-    imageUrl: data.iteminfo?.imageurl,
-    wear: wear,
-    floatRank: getFloatPercentage(floatValue, data.iteminfo?.min || 0, data.iteminfo?.max || 1).toFixed(2),
-    lowFloat: floatValue < 0.07,
-    highFloat: floatValue > 0.93,
-    isStatTrak: data.iteminfo?.quality === 9,
-    isSouvenir: data.iteminfo?.quality === 12,
-    timestamp: Date.now()
-  };
-}
-
-function getWearName(floatValue) {
-  if (floatValue < 0.07) return 'Factory New';
-  if (floatValue < 0.15) return 'Minimal Wear';
-  if (floatValue < 0.37) return 'Field-Tested';
-  if (floatValue < 0.44) return 'Well-Worn';
-  return 'Battle-Scarred';
-}
-
-function getFloatPercentage(floatValue, min = 0, max = 1) {
-  return ((floatValue - min) / (max - min)) * 100;
-}
-
-function displayManualResult(floatData) {
-  const resultElement = document.getElementById('manualResult');
-  
-  chrome.storage.local.get(['settings'], (result) => {
-    const settings = result.settings || getDefaultSettings();
-    const precision = settings.floatPrecision || 0;
-    const floatValue = precision === 0 ? floatData.floatValue?.toString() || 'N/A' : floatData.floatValue?.toFixed(precision) || 'N/A';
-    const wear = floatData.wear || 'Unknown';
-    const paintSeed = floatData.paintSeed || 'N/A';
-    const paintIndex = floatData.paintIndex || 'N/A';
-    const itemName = floatData.itemName || 'CS2 Item';
-  
-  resultElement.innerHTML = `
-    <div class="float-display">
-      <div class="float-value">${floatValue}</div>
-      <div class="wear-name">${wear}</div>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Item:</span>
-      <span class="detail-value">${itemName}</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Paint Seed:</span>
-      <span class="detail-value">${paintSeed}</span>
-    </div>
-    <div class="detail-row">
-      <span class="detail-label">Paint Index:</span>
-      <span class="detail-value">${paintIndex}</span>
-    </div>
-    ${floatData.min && floatData.max ? `
-    <div class="detail-row">
-      <span class="detail-label">Range:</span>
-      <span class="detail-value">${floatData.min} - ${floatData.max}</span>
-    </div>
-    ` : ''}
-    ${floatData.floatRank ? `
-    <div class="detail-row">
-      <span class="detail-label">Rank:</span>
-      <span class="detail-value">Top ${floatData.floatRank}%</span>
-    </div>
-    ` : ''}
-  `;
-  
-  resultElement.style.display = 'block';
-  });
-}
-
-function showNotification(message, type = 'info') {
-  // Create notification element
-  const notification = document.createElement('div');
-  notification.className = `notification ${type} show`;
-  notification.textContent = message;
-  
-  document.body.appendChild(notification);
-  
-  // Auto-hide after 3 seconds
-  setTimeout(() => {
-    notification.classList.remove('show');
-    setTimeout(() => notification.remove(), 300);
-  }, 3000);
-}
-
-function saveSettings() {
-  const settings = {
-    enableMarket: document.getElementById('enableMarket').classList.contains('active'),
-    enableInventory: document.getElementById('enableInventory').classList.contains('active'),
-    autoLoad: document.getElementById('autoLoad').classList.contains('active'),
-    showStickers: document.getElementById('showStickers').classList.contains('active'),
-    showKeychains: document.getElementById('showKeychains').classList.contains('active'),
-    highlightLowFloat: document.getElementById('highlightLow').classList.contains('active'),
-    highlightHighFloat: document.getElementById('highlightHigh').classList.contains('active'),
-    highlightOwned: document.getElementById('highlightOwned').classList.contains('active'),
-    enableFloatFilters: document.getElementById('enableFloatFilters').classList.contains('active'),
-    floatPrecision: (() => {
-      const sliderValue = parseInt(document.getElementById('floatPrecisionSlider')?.value || document.getElementById('floatPrecision')?.value) || 7;
-      return sliderValue === 7 ? 0 : sliderValue;
-    })(),
-    cacheExpiry: parseInt(document.getElementById('cacheExpiry')?.value) || 24,
-    language: document.getElementById('language')?.value || 'en',
-    showFloatRank: true,
-    showPaintSeed: true
-  };
-  
-  chrome.storage.local.set({ settings }, () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'updateSettings', settings }, (response) => {
-          if (chrome.runtime.lastError) {
-            // Silently ignore - extension may not be active on current tab
-            console.log('Settings saved locally');
-          }
-        });
-      }
-    });
-  });
-}
-
-function updateSliderLabels(activeValue) {
-  document.querySelectorAll('.slider-label').forEach(label => {
-    if (parseInt(label.dataset.value) === activeValue) {
-      label.classList.add('active');
-    } else {
-      label.classList.remove('active');
-    }
-  });
-}
-
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', initialize);

@@ -116,7 +116,7 @@ async function fetchFloatData(inspectLink) {
 /**
  * Process enhanced float request
  */
-async function processFloatRequest(inspectLink) {
+async function processFloatRequest(inspectLink, precision = 4) {
   // Check cache
   const cacheKey = inspectLink;
   const cached = cache.get(cacheKey);
@@ -143,6 +143,7 @@ async function processFloatRequest(inspectLink) {
     wearName: getWearName(rawData.floatvalue),
     weaponName: getWeaponName(rawData.defindex),
     skinName: `Skin ${rawData.paintindex}`,
+    precision: precision,
     fullItemName: `${getWeaponName(rawData.defindex)} | Skin ${rawData.paintindex}`,
     stickers: rawData.stickers || [],
     keychains: rawData.keychains || [],
@@ -201,9 +202,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         console.log('🔍 Processing enhanced float request for:', request.inspectLink);
-        
-        const enhancedData = await processFloatRequest(request.inspectLink);
-        
+
+        // Get settings for precision
+        const settingsResult = await chrome.storage.local.get(['settings']);
+        const settings = settingsResult.settings || {};
+        const precision = settings.floatPrecision || 4;
+
+        const enhancedData = await processFloatRequest(request.inspectLink, precision);
+
         if (enhancedData) {
           // Update stats
           try {
@@ -253,6 +259,53 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const result = await chrome.storage.local.get(['enhancedStats']);
         sendResponse({ stats: result.enhancedStats || {} });
+      } catch (error) {
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+  
+  // Handle settings requests
+  if (request.action === 'getSettings') {
+    (async () => {
+      try {
+        const result = await chrome.storage.local.get(['settings']);
+        sendResponse({ settings: result.settings || {} });
+      } catch (error) {
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+  
+  // Handle save settings
+  if (request.action === 'saveSettings') {
+    (async () => {
+      try {
+        await chrome.storage.local.set({ settings: request.settings });
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+  
+  // Handle clear stats
+  if (request.action === 'clearStats') {
+    (async () => {
+      try {
+        await chrome.storage.local.set({ 
+          enhancedStats: {
+            itemsAnalyzed: 0,
+            blueGemsDetected: 0,
+            topTierFloatsFound: 0,
+            extensionVersion: '2.0.0',
+            installDate: new Date().toISOString()
+          }
+        });
+        sendResponse({ success: true });
       } catch (error) {
         sendResponse({ error: error.message });
       }

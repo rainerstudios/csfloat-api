@@ -114,7 +114,7 @@ function addFloatDisplay(itemElement, floatData) {
   const container = document.createElement('div');
   container.className = 'cs2-float-enhanced';
   container.style.cssText = `
-    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
     color: white;
     padding: 6px 10px;
     margin: 4px 0;
@@ -123,6 +123,7 @@ function addFloatDisplay(itemElement, floatData) {
     display: flex;
     align-items: center;
     gap: 10px;
+    border: 1px solid #3a3a3a;
   `;
 
   // Create float value element for filtering
@@ -131,12 +132,19 @@ function addFloatDisplay(itemElement, floatData) {
   floatValue.textContent = floatData.floatValue.toFixed(6);
   floatValue.style.display = 'none'; // Hidden but used for filtering
 
+  // Calculate float position percentage for the bar
+  const minFloat = floatData.min || 0.0;
+  const maxFloat = floatData.max || 1.0;
+  const floatRange = maxFloat - minFloat;
+  const floatPosition = ((floatData.floatValue - minFloat) / floatRange) * 100;
+
   // Create visible display
   let displayHtml = `
-    <div style="flex: 1;">
-      <strong>${floatData.weaponName || 'Item'}</strong>
-      <span style="margin-left: 8px;">Float: ${floatData.floatValue.toFixed(6)}</span>
-      <span style="margin-left: 8px; opacity: 0.9;">${floatData.wearName}</span>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span><strong>${floatData.weaponName || 'Item'}</strong> Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} ${floatData.wearName}</span>
+      <div style="width: 60px; height: 6px; background: linear-gradient(to right, #22c55e 0%, #84cc16 20%, #eab308 40%, #f97316 70%, #dc2626 100%); border-radius: 3px; position: relative;">
+        <div style="position: absolute; left: ${floatPosition}%; top: 0; width: 2px; height: 6px; background: white; border-radius: 1px; box-shadow: 0 0 2px rgba(0,0,0,0.5);"></div>
+      </div>
     </div>
   `;
 
