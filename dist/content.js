@@ -625,9 +625,9 @@ function initialize() {
       createSortingBar();
     }, 2000);
 
-    // Add floating price alert toggle
+    // Initialize integrated market intelligence (replaces floating buttons)
     setTimeout(() => {
-      createFloatingAlertButton();
+      // createFloatingAlertButton(); // Disabled - now integrated into item info panel
       // createMarketIntelligenceButton(); // Disabled - now integrated into item info panel
       if (window.MarketIntelligence) {
         window.MarketIntelligence.integrateMarketIntelligenceIntoItemInfo();
