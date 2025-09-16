@@ -164,6 +164,73 @@ async function processFloatRequest(inspectLink, precision = 4) {
 }
 
 /**
+ * Check price alerts and send notifications
+ */
+async function checkPriceAlerts(itemName, currentPrice) {
+  try {
+    const result = await chrome.storage.local.get(['priceAlerts']);
+    const alerts = result.priceAlerts || {};
+
+    for (const [alertId, alert] of Object.entries(alerts)) {
+      if (alert.itemName === itemName) {
+        let shouldAlert = false;
+        let alertMessage = '';
+
+        if (alert.alertType === 'below' && currentPrice < alert.targetPrice) {
+          shouldAlert = true;
+          alertMessage = `Price dropped to $${currentPrice} (target: $${alert.targetPrice})`;
+        } else if (alert.alertType === 'above' && currentPrice > alert.targetPrice) {
+          shouldAlert = true;
+          alertMessage = `Price rose to $${currentPrice} (target: $${alert.targetPrice})`;
+        }
+
+        if (shouldAlert) {
+          // Send Chrome notification
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icons/icon48.png',
+            title: `💰 Price Alert: ${itemName}`,
+            message: alertMessage
+          });
+
+          // Update alert as triggered
+          alerts[alertId].triggered = true;
+          alerts[alertId].triggeredAt = Date.now();
+          await chrome.storage.local.set({ priceAlerts: alerts });
+
+          console.log(`🔔 Price alert triggered for ${itemName}: ${alertMessage}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Price alert check error:', error);
+  }
+}
+
+/**
+ * Market intelligence and profit calculation
+ */
+function calculateMarketIntelligence(priceHistory) {
+  if (!priceHistory || priceHistory.length < 2) return null;
+
+  const prices = priceHistory.map(p => p.price);
+  const latest = prices[prices.length - 1];
+  const previous = prices[prices.length - 2];
+
+  const trend = latest > previous ? 'up' : latest < previous ? 'down' : 'stable';
+  const volatility = Math.max(...prices) - Math.min(...prices);
+  const averagePrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+
+  return {
+    trend,
+    volatility,
+    averagePrice,
+    currentPrice: latest,
+    priceChange: ((latest - previous) / previous * 100).toFixed(2)
+  };
+}
+
+/**
  * Extension installation handler
  */
 chrome.runtime.onInstalled.addListener((details) => {
@@ -315,10 +382,220 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
-  
+
+  // Handle save alert requests
+  if (request.action === 'saveAlert') {
+    (async () => {
+      try {
+        const { alertData } = request;
+        const result = await chrome.storage.local.get(['priceAlerts']);
+        const alerts = result.priceAlerts || {};
+
+        alerts[alertData.id] = alertData;
+
+        await chrome.storage.local.set({ priceAlerts: alerts });
+        console.log('🔔 Price alert saved:', alertData);
+
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('Save alert error:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true; // Required for async response
+  }
+
+  // Handle get alerts requests
+  if (request.action === 'getAlerts') {
+    (async () => {
+      try {
+        const result = await chrome.storage.local.get(['priceAlerts']);
+        sendResponse({ alerts: result.priceAlerts || {} });
+      } catch (error) {
+        console.error('Get alerts error:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true; // Required for async response
+  }
+
+  // Handle delete alert requests
+  if (request.action === 'deleteAlert') {
+    (async () => {
+      try {
+        const { alertId } = request;
+        const result = await chrome.storage.local.get(['priceAlerts']);
+        const alerts = result.priceAlerts || {};
+
+        delete alerts[alertId];
+
+        await chrome.storage.local.set({ priceAlerts: alerts });
+        console.log('🗑️ Price alert deleted:', alertId);
+
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('Delete alert error:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true; // Required for async response
+  }
+
+  // Handle price history tracking
+  if (request.action === 'trackItemPrice') {
+    (async () => {
+      try {
+        const { itemName, price, floatValue, inspectLink } = request;
+        const itemKey = `priceHistory_${itemName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+        const result = await chrome.storage.local.get([itemKey]);
+        const itemData = result[itemKey] || {
+          itemName,
+          priceHistory: [],
+          floatHistory: [],
+          firstSeen: Date.now()
+        };
+
+        // Add new data point
+        const dataPoint = {
+          price,
+          floatValue,
+          timestamp: Date.now(),
+          inspectLink
+        };
+
+        itemData.priceHistory.push(dataPoint);
+        if (floatValue) itemData.floatHistory.push({ floatValue, timestamp: Date.now() });
+
+        // Keep only last 100 data points
+        if (itemData.priceHistory.length > 100) {
+          itemData.priceHistory.shift();
+        }
+        if (itemData.floatHistory.length > 100) {
+          itemData.floatHistory.shift();
+        }
+
+        itemData.lastUpdated = Date.now();
+        await chrome.storage.local.set({ [itemKey]: itemData });
+
+        // Check for price alerts
+        await checkPriceAlerts(itemName, price);
+
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('Price tracking error:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Handle get price history requests
+  if (request.action === 'getPriceHistory') {
+    (async () => {
+      try {
+        const { itemName } = request;
+        const itemKey = `priceHistory_${itemName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const result = await chrome.storage.local.get([itemKey]);
+
+        sendResponse({
+          success: true,
+          data: result[itemKey] || null
+        });
+      } catch (error) {
+        console.error('Get price history error:', error);
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
+  }
+
   return false;
+});
+
+/**
+ * Automatic data cleanup and monitoring
+ */
+// Set up periodic cleanup alarm
+chrome.alarms.create('dataCleanup', { periodInMinutes: 60 }); // Every hour
+chrome.alarms.create('alertMonitoring', { periodInMinutes: 5 }); // Every 5 minutes
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'dataCleanup') {
+    try {
+      console.log('🧹 Running data cleanup...');
+      const data = await chrome.storage.local.get();
+      const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7 days ago
+
+      // Clean up old price history entries
+      const keysToClean = Object.keys(data).filter(key => {
+        if (key.startsWith('priceHistory_') && data[key].lastUpdated < cutoff) {
+          return true;
+        }
+        return false;
+      });
+
+      // Clean up triggered alerts older than 24 hours
+      const alerts = data.priceAlerts || {};
+      const alertsToRemove = [];
+
+      for (const [alertId, alert] of Object.entries(alerts)) {
+        if (alert.triggered && alert.triggeredAt < Date.now() - (24 * 60 * 60 * 1000)) {
+          alertsToRemove.push(alertId);
+        }
+      }
+
+      if (keysToClean.length > 0) {
+        await chrome.storage.local.remove(keysToClean);
+        console.log(`🗑️ Cleaned up ${keysToClean.length} old price history records`);
+      }
+
+      if (alertsToRemove.length > 0) {
+        alertsToRemove.forEach(alertId => delete alerts[alertId]);
+        await chrome.storage.local.set({ priceAlerts: alerts });
+        console.log(`🗑️ Cleaned up ${alertsToRemove.length} triggered alerts`);
+      }
+
+    } catch (error) {
+      console.error('Data cleanup error:', error);
+    }
+  }
+
+  if (alarm.name === 'alertMonitoring') {
+    try {
+      // Check for arbitrage opportunities and market anomalies
+      const data = await chrome.storage.local.get();
+      const priceHistoryKeys = Object.keys(data).filter(key => key.startsWith('priceHistory_'));
+
+      for (const key of priceHistoryKeys) {
+        const itemData = data[key];
+        if (itemData.priceHistory.length >= 10) {
+          const intelligence = calculateMarketIntelligence(itemData.priceHistory);
+
+          // Alert on high volatility items (potential arbitrage)
+          if (intelligence && Math.abs(parseFloat(intelligence.priceChange)) > 20) {
+            console.log(`📊 High volatility detected for ${itemData.itemName}: ${intelligence.priceChange}%`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Alert monitoring error:', error);
+    }
+  }
+});
+
+// Handle notification clicks
+chrome.notifications.onClicked.addListener((notificationId) => {
+  // Open Steam Market when notification is clicked
+  chrome.tabs.create({
+    url: 'https://steamcommunity.com/market/'
+  });
+
+  // Clear the notification
+  chrome.notifications.clear(notificationId);
 });
 
 console.log('🚀 CS2 Float Extension Enhanced Background Service Worker loaded');
 console.log('✨ Features: Enhanced Float Analysis, Blue Gem Detection, Pattern Recognition');
+console.log('📊 Features: Price History Tracking, Alert Monitoring, Market Intelligence');
 console.log('📊 Version: 2.0.0');

@@ -1,459 +1,340 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>CS2 Float Extension Enhanced</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            width: 380px;
-            min-height: 600px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a1a;
-            color: #e0e0e0;
-            overflow-y: auto;
-        }
-        
-        .container {
-            padding: 0;
-            position: relative;
-            min-height: 600px;
-        }
-        
-        .header {
-            padding: 20px;
-            text-align: center;
-            background: linear-gradient(135deg, #1e3c72, #2a5298);
-            border-bottom: 1px solid #3a3a3a;
-        }
-        
-        .header h1 {
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 4px;
-            color: #ffffff;
-        }
-        
-        .header .subtitle {
-            font-size: 11px;
-            opacity: 0.9;
-            font-weight: 400;
-        }
-        
-        .content {
-            padding: 16px;
-        }
-        
-        .stats-card {
-            background: #2d2d2d;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            border: 1px solid #3a3a3a;
-        }
-        
-        .card-title {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-        
-        .stat-item {
-            text-align: center;
-            background: #1a1a1a;
-            padding: 12px;
-            border-radius: 8px;
-        }
-        
-        .stat-value {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 4px;
-            color: #22c55e;
-        }
-        
-        .stat-label {
-            font-size: 10px;
-            opacity: 0.8;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .settings-card {
-            background: #2d2d2d;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            border: 1px solid #3a3a3a;
-        }
-        
-        .setting-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding: 8px 0;
-        }
-        
-        .setting-item:last-child {
-            margin-bottom: 0;
-        }
-        
-        .setting-label {
-            font-size: 13px;
-            font-weight: 500;
-            flex: 1;
-        }
-        
-        .setting-description {
-            font-size: 10px;
-            opacity: 0.7;
-            margin-top: 2px;
-        }
-        
-        .toggle {
-            position: relative;
-            width: 44px;
-            height: 22px;
-            background: #3a3a3a;
-            border-radius: 11px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 1px solid #4a4a4a;
-        }
-        
-        .toggle.active {
-            background: #22c55e;
-            border-color: #22c55e;
-        }
-        
-        .toggle-slider {
-            position: absolute;
-            top: 1px;
-            left: 1px;
-            width: 18px;
-            height: 18px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.3s ease;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-        }
-        
-        .toggle.active .toggle-slider {
-            transform: translateX(22px);
-        }
-        
-        .range-control {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: 120px;
-        }
-        
-        .range-control input[type="range"] {
-            flex: 1;
-            height: 4px;
-            background: #3a3a3a;
-            border-radius: 2px;
-            outline: none;
-            cursor: pointer;
-        }
-        
-        .range-value {
-            min-width: 20px;
-            text-align: center;
-            font-size: 11px;
-            background: #1a1a1a;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        
-        .actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin: 16px;
-        }
-        
-        .btn {
-            padding: 12px 16px;
-            border: none;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .btn-primary {
-            background: #22c55e;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #16a34a;
-            transform: translateY(-1px);
-        }
-        
-        .btn-secondary {
-            background: #3a3a3a;
-            color: #e0e0e0;
-            border: 1px solid #4a4a4a;
-        }
-        
-        .btn-secondary:hover {
-            background: #4a4a4a;
-        }
-        
-        .footer {
-            text-align: center;
-            padding: 12px;
-            background: #2d2d2d;
-            border-top: 1px solid #3a3a3a;
-            font-size: 10px;
-            opacity: 0.7;
-        }
-        
-        .manual-check {
-            margin-top: 12px;
-        }
-        
-        .input-field {
-            width: 100%;
-            padding: 8px 12px;
-            background: #1a1a1a;
-            border: 1px solid #3a3a3a;
-            border-radius: 6px;
-            color: #e0e0e0;
-            font-size: 11px;
-            margin-bottom: 8px;
-        }
-        
-        .input-field:focus {
-            outline: none;
-            border-color: #22c55e;
-        }
-        
-        .manual-result {
-            background: #1a1a1a;
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 8px;
-            font-size: 11px;
-        }
-        
-        .input-group {
-            margin-bottom: 12px;
-        }
-        
-        .input-label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            margin-bottom: 6px;
-            opacity: 0.9;
-        }
-    </style>
+  <meta charset="utf-8">
+  <title>CS2 Float Extension Enhanced</title>
+  <style>
+    body {
+      width: 320px;
+      min-height: 200px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #1a1a1a;
+      color: #ffffff;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 12px;
+    }
+    
+    .header h2 {
+      margin: 0 0 4px 0;
+      color: #4CAF50;
+      font-size: 18px;
+    }
+    
+    .version {
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>CS2 Float Extension</h1>
-            <div class="subtitle">Enhanced v2.0.0 - Pattern Recognition & Market Intelligence</div>
+  <div class="header">
+    <h2>CS2 Float Enhanced</h2>
+    <div class="version">v2.0.0</div>
+  </div>
+
+  <div class="settings-section">
+    <h3>Features</h3>
+
+    <div class="toggle-grid">
+      <div class="toggle-item">
+        <div class="toggle" id="enablePatternAnalysis">
+          <div class="toggle-slider"></div>
         </div>
-        
-        <div class="content">
-            <div class="stats-card">
-                <div class="card-title">
-                    📊 Extension Statistics
-                </div>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-value" id="itemsAnalyzed">0</div>
-                        <div class="stat-label">Items Analyzed</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="blueGemsDetected">0</div>
-                        <div class="stat-label">Blue Gems</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="topTierFloatsFound">0</div>
-                        <div class="stat-label">Top Tier Floats</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value">2.0.0</div>
-                        <div class="stat-label">Version</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="settings-card">
-                <div class="card-title">
-                    🔍 Analysis Features
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Pattern Analysis</div>
-                        <div class="setting-description">Blue gems, fades, dopplers</div>
-                    </div>
-                    <div class="toggle active" id="enablePatternAnalysis">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Blue Gem Detection</div>
-                        <div class="setting-description">Case Hardened analysis</div>
-                    </div>
-                    <div class="toggle active" id="enableBlueGemDetection">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Market Intelligence</div>
-                        <div class="setting-description">Investment scoring & trends</div>
-                    </div>
-                    <div class="toggle active" id="enableMarketIntelligence">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Visual Float Bars</div>
-                        <div class="setting-description">Gradient wear indicators</div>
-                    </div>
-                    <div class="toggle active" id="enableVisualFloatBars">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Percentile Rankings</div>
-                        <div class="setting-description">Float percentile within category</div>
-                    </div>
-                    <div class="toggle active" id="showPercentileRank">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="settings-card">
-                <div class="card-title">
-                    🎯 Float Highlighting
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Highlight Low Floats</div>
-                        <div class="setting-description">Highlight exceptionally low floats</div>
-                    </div>
-                    <div class="toggle active" id="highlightLow">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-                
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-label">Highlight High Floats</div>
-                        <div class="setting-description">Highlight very high floats</div>
-                    </div>
-                    <div class="toggle active" id="highlightHigh">
-                        <div class="toggle-slider"></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="settings-card">
-                <div class="card-title">
-                    ⚙️ Thresholds & Display
-                </div>
-                
-                <div class="input-group">
-                    <label class="input-label">Low Float Threshold</label>
-                    <input type="number" class="input-field" id="lowThreshold" min="0" max="1" step="0.01" value="0.07" placeholder="0.07">
-                </div>
-                
-                <div class="input-group">
-                    <label class="input-label">High Float Threshold</label>
-                    <input type="number" class="input-field" id="highThreshold" min="0" max="1" step="0.01" value="0.93" placeholder="0.93">
-                </div>
-                
-                <div class="input-group">
-                    <label class="input-label">Float Precision (Decimal Places)</label>
-                    <input type="number" class="input-field" id="floatPrecision" min="2" max="6" step="1" value="4" placeholder="4">
-                </div>
-                
-                <div class="input-group">
-                    <label class="input-label">Cache Expiry (Hours)</label>
-                    <input type="number" class="input-field" id="cacheExpiry" min="1" max="168" step="1" value="24" placeholder="24">
-                </div>
-                
-                <div class="input-group">
-                    <label class="input-label">Language</label>
-                    <select class="input-field" id="language">
-                        <option value="en">English</option>
-                        <option value="es">Español</option>
-                        <option value="fr">Français</option>
-                        <option value="de">Deutsch</option>
-                        <option value="it">Italiano</option>
-                        <option value="pt">Português</option>
-                        <option value="ru">Русский</option>
-                        <option value="zh">中文</option>
-                        <option value="ja">日本語</option>
-                        <option value="ko">한국어</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="settings-card">
-                <div class="card-title">
-                    🔧 Manual Float Check
-                </div>
-                
-                <input type="text" class="input-field" id="manualInspect" 
-                       placeholder="Paste inspect link here...">
-                <button class="btn btn-primary" id="checkManual" style="width: 100%;">
-                    Check Float
-                </button>
-                
-                <div id="manualResult" class="manual-result" style="display: none;">
-                    <!-- Manual check results appear here -->
-                </div>
-            </div>
+        <label>Pattern Analysis</label>
+      </div>
+
+      <div class="toggle-item">
+        <div class="toggle" id="enableBlueGemDetection">
+          <div class="toggle-slider"></div>
         </div>
-        
-        <div class="actions">
-            <button class="btn btn-primary" id="reloadFloats">⟳ Reload Floats</button>
-            <button class="btn btn-secondary" id="clearCache">🗑 Clear Cache</button>
+        <label>Blue Gem Detection</label>
+      </div>
+
+      <div class="toggle-item">
+        <div class="toggle" id="enableMarketIntelligence">
+          <div class="toggle-slider"></div>
         </div>
-        
-        <div class="footer">
-            Enhanced Float Analysis | Blue Gem Detection | Market Intelligence
+        <label>Market Intelligence</label>
+      </div>
+
+      <div class="toggle-item">
+        <div class="toggle" id="enableVisualFloatBars">
+          <div class="toggle-slider"></div>
         </div>
+        <label>Visual Float Bars</label>
+      </div>
+
+      <div class="toggle-item">
+        <div class="toggle" id="showPercentileRank">
+          <div class="toggle-slider"></div>
+        </div>
+        <label>Percentile Rank</label>
+      </div>
     </div>
-    
-    <script src="popup.js"></script>
+
+    <div class="setting-item">
+      <label for="floatPrecision">Float Precision:</label>
+      <div class="slider-container">
+        <input type="range" id="floatPrecision" min="2" max="6" value="4" step="1">
+        <div class="precision-labels">
+          <span>0.00</span>
+          <span>0.000</span>
+          <span>0.0000</span>
+          <span>0.00000</span>
+          <span>0.000000</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="reloadFloats">Reload Floats</button>
+      <button id="clearCache">Clear Cache</button>
+    </div>
+  </div>
+
+  <div class="stats-section">
+    <h3>Statistics</h3>
+    <div class="stats-grid">
+      <div class="stat-item">
+        <span class="stat-value" id="itemsAnalyzed">0</span>
+        <span class="stat-label">Items Analyzed</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="blueGemsDetected">0</span>
+        <span class="stat-label">Blue Gems Found</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="topTierFloatsFound">0</span>
+        <span class="stat-label">Top Tier Floats</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="manual-section">
+    <h3>Manual Check</h3>
+    <div class="manual-input">
+      <input type="text" id="manualInspect" placeholder="Paste inspect link here...">
+      <button id="checkManual">Check</button>
+    </div>
+    <div id="manualResult" style="display: none;"></div>
+  </div>
+
+  <style>
+    .settings-section, .stats-section, .manual-section {
+      margin-top: 20px;
+    }
+
+    .settings-section h3, .stats-section h3, .manual-section h3 {
+      margin: 0 0 15px 0;
+      color: #4CAF50;
+      font-size: 16px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 8px;
+    }
+
+    .toggle-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 20px;
+      background: #333;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .toggle.active {
+      background: #4CAF50;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+
+    .toggle.active .toggle-slider {
+      transform: translateX(20px);
+    }
+
+    .toggle-item label {
+      color: #ddd;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 8px;
+      background: rgba(76, 175, 80, 0.1);
+      border-radius: 6px;
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+
+    .stat-value {
+      display: block;
+      font-size: 18px;
+      font-weight: bold;
+      color: #4CAF50;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #888;
+    }
+
+    .manual-input {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .manual-input input {
+      flex: 1;
+      padding: 8px;
+      background: #333;
+      border: 1px solid #555;
+      border-radius: 4px;
+      color: #ddd;
+      font-size: 12px;
+    }
+
+    .manual-input input::placeholder {
+      color: #888;
+    }
+
+    .manual-input button {
+      padding: 8px 16px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    #manualResult {
+      background: #2a2a2a;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .setting-item {
+      margin-bottom: 20px;
+    }
+
+    .setting-item label {
+      display: block;
+      margin-bottom: 8px;
+      color: #ddd;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .slider-container {
+      position: relative;
+    }
+
+    .slider-container input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #333;
+      outline: none;
+      -webkit-appearance: none;
+    }
+
+    .slider-container input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4CAF50;
+      cursor: pointer;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .slider-container input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4CAF50;
+      cursor: pointer;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .precision-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #888;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 25px;
+    }
+
+    .actions button {
+      flex: 1;
+      padding: 10px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+
+    .actions button:hover {
+      background: #45a049;
+    }
+
+    .actions button:active {
+      transform: translateY(1px);
+    }
+  </style>
+
+  <script src="popup.js"></script>
 </body>
 </html>

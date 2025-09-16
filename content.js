@@ -108,6 +108,190 @@ async function processFloatValues() {
 }
 
 /**
+ * Track item price and float data for market intelligence
+ */
+async function trackItemPrice(itemElement, floatData) {
+  try {
+    // Extract price from the item element
+    const priceElement = itemElement.querySelector('.market_listing_price_with_fee, .market_listing_price, .normal_price');
+    if (!priceElement) return;
+
+    const priceText = priceElement.textContent.trim();
+    const priceMatch = priceText.match(/[\d.,]+/);
+    if (!priceMatch) return;
+
+    const price = parseFloat(priceMatch[0].replace(',', '.'));
+    const itemName = floatData.fullItemName || floatData.skinName || 'Unknown Item';
+
+    // Get inspect link for tracking
+    const inspectBtn = itemElement.querySelector('a[href*="steam://rungame/730"]');
+    const inspectLink = inspectBtn ? inspectBtn.href : '';
+
+    // Send tracking data to background
+    chrome.runtime.sendMessage({
+      action: 'trackItemPrice',
+      itemName: itemName,
+      price: price,
+      floatValue: floatData.floatValue,
+      inspectLink: inspectLink
+    });
+
+    console.log(`📊 Tracking: ${itemName} - $${price} (Float: ${floatData.floatValue})`);
+
+  } catch (error) {
+    console.error('Price tracking error:', error);
+  }
+}
+
+/**
+ * Add click-to-copy functionality to float display elements
+ */
+function addCopyToClipboardFunctionality(container, floatData) {
+  // Create copy notification
+  function showCopyNotification(element, text) {
+    // Highlight the element briefly
+    const originalBg = element.style.backgroundColor;
+    element.style.backgroundColor = 'rgba(34, 197, 94, 0.3)';
+
+    // Show notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: absolute;
+      background: #22c55e;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      z-index: 10000;
+      pointer-events: none;
+      white-space: nowrap;
+    `;
+    notification.textContent = `Copied: ${text}`;
+
+    // Position notification
+    const rect = element.getBoundingClientRect();
+    notification.style.left = (rect.left + window.scrollX) + 'px';
+    notification.style.top = (rect.top + window.scrollY - 30) + 'px';
+
+    document.body.appendChild(notification);
+
+    // Remove notification and reset background after delay
+    setTimeout(() => {
+      element.style.backgroundColor = originalBg;
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 1500);
+  }
+
+  // Copy float value
+  const floatElement = container.querySelector('.cs2-float-copyable');
+  if (floatElement) {
+    floatElement.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const floatText = floatData.floatValue.toFixed(floatData.precision || 4);
+
+      try {
+        await navigator.clipboard.writeText(floatText);
+        showCopyNotification(floatElement, floatText);
+        console.log('📋 Copied float:', floatText);
+      } catch (err) {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = floatText;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showCopyNotification(floatElement, floatText);
+        console.log('📋 Copied float (fallback):', floatText);
+      }
+    });
+
+    // Add hover effect
+    floatElement.addEventListener('mouseenter', () => {
+      floatElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    });
+
+    floatElement.addEventListener('mouseleave', () => {
+      floatElement.style.backgroundColor = 'transparent';
+    });
+  }
+
+  // Copy pattern seed
+  const patternElement = container.querySelector('.cs2-pattern-copyable');
+  if (patternElement) {
+    patternElement.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const patternText = floatData.paintSeed.toString();
+
+      try {
+        await navigator.clipboard.writeText(patternText);
+        showCopyNotification(patternElement, patternText);
+        console.log('📋 Copied pattern:', patternText);
+      } catch (err) {
+        // Fallback
+        const textArea = document.createElement('textarea');
+        textArea.value = patternText;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showCopyNotification(patternElement, patternText);
+      }
+    });
+
+    // Add hover effect
+    patternElement.addEventListener('mouseenter', () => {
+      patternElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    });
+
+    patternElement.addEventListener('mouseleave', () => {
+      patternElement.style.backgroundColor = 'transparent';
+    });
+  }
+
+  // Copy investment score
+  const scoreElement = container.querySelector('.cs2-score-copyable');
+  if (scoreElement) {
+    scoreElement.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const scoreText = `${floatData.investmentScore}/10`;
+
+      try {
+        await navigator.clipboard.writeText(scoreText);
+        showCopyNotification(scoreElement, scoreText);
+        console.log('📋 Copied score:', scoreText);
+      } catch (err) {
+        // Fallback
+        const textArea = document.createElement('textarea');
+        textArea.value = scoreText;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showCopyNotification(scoreElement, scoreText);
+      }
+    });
+
+    // Add hover effect
+    scoreElement.addEventListener('mouseenter', () => {
+      scoreElement.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    });
+
+    scoreElement.addEventListener('mouseleave', () => {
+      scoreElement.style.backgroundColor = 'transparent';
+    });
+  }
+}
+
+/**
  * Add float display to an item
  */
 async function addFloatDisplay(itemElement, floatData) {
@@ -144,7 +328,7 @@ async function addFloatDisplay(itemElement, floatData) {
   // Create visible display with conditional float bar
   let displayHtml = `
     <div style="display: flex; align-items: center; gap: 8px;">
-      <span><strong>${floatData.weaponName || 'Item'}</strong> Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} ${floatData.wearName}</span>`;
+      <span class="cs2-float-copyable" style="cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy float value"><strong>${floatData.weaponName || 'Item'}</strong> Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} ${floatData.wearName}</span>`;
 
   // Add visual float bar if enabled
   if (settings.enableVisualFloatBars !== false) {
@@ -158,7 +342,7 @@ async function addFloatDisplay(itemElement, floatData) {
 
   // Add pattern seed if pattern analysis is enabled
   if (settings.enablePatternAnalysis !== false && floatData.paintSeed) {
-    displayHtml += `<div style="opacity: 0.9;">Pattern: #${floatData.paintSeed}</div>`;
+    displayHtml += `<div class="cs2-pattern-copyable" style="opacity: 0.9; cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy pattern seed">Pattern: #${floatData.paintSeed}</div>`;
   }
 
   // Add blue gem info if blue gem detection is enabled
@@ -175,15 +359,49 @@ async function addFloatDisplay(itemElement, floatData) {
     const color = floatData.investmentScore >= 7 ? '#00ff00' :
                   floatData.investmentScore >= 5 ? '#ffff00' : '#ff9900';
     displayHtml += `
-      <div style="color: ${color}; font-weight: bold;">
+      <div class="cs2-score-copyable" style="color: ${color}; font-weight: bold; cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy investment score">
         ★ ${floatData.investmentScore}/10
+      </div>
+    `;
+  }
+
+  // Add price alert button if on market pages
+  if (window.location.pathname.includes('/market/listings/')) {
+    displayHtml += `
+      <div style="margin-top: 4px;">
+        <button class="cs2-price-alert-btn" style="
+          background: linear-gradient(135deg, #f97316, #ea580c);
+          color: white;
+          border: none;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 10px;
+          cursor: pointer;
+          opacity: 0.8;
+        ">🔔 Alert</button>
       </div>
     `;
   }
 
   container.innerHTML = displayHtml;
   container.appendChild(floatValue);
-  
+
+  // Add price alert functionality
+  const alertBtn = container.querySelector('.cs2-price-alert-btn');
+  if (alertBtn) {
+    alertBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showPriceAlertDialog(floatData);
+    });
+  }
+
+  // Add click-to-copy functionality
+  addCopyToClipboardFunctionality(container, floatData);
+
+  // Track price history for market intelligence
+  await trackItemPrice(itemElement, floatData);
+
   // Insert after the item name
   const itemName = itemElement.querySelector('.market_listing_item_name_block');
   if (itemName) {
@@ -396,6 +614,12 @@ function initialize() {
       createSortingBar();
     }, 2000);
 
+    // Add floating price alert toggle
+    setTimeout(() => {
+      createFloatingAlertButton();
+      createMarketIntelligenceButton();
+    }, 1500);
+
     // Process items after a short delay
     setTimeout(() => {
       processFloatValues();
@@ -573,6 +797,574 @@ function initializeInventoryChecker() {
   
   // Initialize the inventory checker
   InventoryFloatChecker.init();
+}
+
+/**
+ * Create floating price alert toggle button
+ */
+function createFloatingAlertButton() {
+  // Don't create if already exists
+  if (document.getElementById('cs2-floating-alert-toggle')) {
+    return;
+  }
+
+  console.log('🔔 Creating floating alert button...');
+
+  // Create floating alert container
+  const alertContainer = document.createElement('div');
+  alertContainer.id = 'cs2-price-alert-container';
+  alertContainer.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    width: 280px;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 15px;
+    z-index: 9999;
+    display: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+
+  alertContainer.innerHTML = `
+    <h4 style="margin: 0 0 10px 0; color: #4CAF50; font-size: 16px;">🔔 Quick Price Alert</h4>
+    <div style="margin-bottom: 10px;">
+      <input type="number" id="cs2-quick-target-price" placeholder="Target price ($)" style="
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #4a4a4a;
+        border-radius: 4px;
+        background: #3a3a3a;
+        color: white;
+        font-size: 14px;
+        margin-bottom: 5px;
+      ">
+      <select id="cs2-quick-alert-type" style="
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #4a4a4a;
+        border-radius: 4px;
+        background: #3a3a3a;
+        color: white;
+        font-size: 14px;
+      ">
+        <option value="below">Alert when price goes below</option>
+        <option value="above">Alert when price goes above</option>
+      </select>
+    </div>
+    <button id="cs2-quick-set-alert" style="
+      width: 100%;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+    ">Set Alert for Current Item</button>
+  `;
+
+  // Create toggle button
+  const alertToggle = document.createElement('button');
+  alertToggle.id = 'cs2-floating-alert-toggle';
+  alertToggle.innerHTML = '🔔';
+  alertToggle.title = 'Quick Price Alert';
+  alertToggle.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    font-size: 18px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    transition: all 0.2s ease;
+  `;
+
+  // Add hover effect
+  alertToggle.addEventListener('mouseenter', () => {
+    alertToggle.style.transform = 'scale(1.1)';
+    alertToggle.style.boxShadow = '0 4px 15px rgba(0,0,0,0.4)';
+  });
+
+  alertToggle.addEventListener('mouseleave', () => {
+    alertToggle.style.transform = 'scale(1)';
+    alertToggle.style.boxShadow = '0 2px 10px rgba(0,0,0,0.3)';
+  });
+
+  // Toggle functionality
+  alertToggle.addEventListener('click', () => {
+    const isVisible = alertContainer.style.display !== 'none';
+    alertContainer.style.display = isVisible ? 'none' : 'block';
+    alertToggle.style.right = isVisible ? '20px' : '320px';
+  });
+
+  // Quick alert functionality
+  document.body.appendChild(alertContainer);
+  document.body.appendChild(alertToggle);
+
+  // Handle quick alert setting
+  document.getElementById('cs2-quick-set-alert').addEventListener('click', () => {
+    const targetPrice = parseFloat(document.getElementById('cs2-quick-target-price').value);
+    const alertType = document.getElementById('cs2-quick-alert-type').value;
+
+    if (!targetPrice || targetPrice <= 0) {
+      showNotification('Please enter a valid target price', 'error');
+      return;
+    }
+
+    // Get item name from page
+    const itemNameElement = document.querySelector('.market_listing_largeimage .market_listing_item_name') ||
+                          document.querySelector('.market_listing_item_name') ||
+                          document.querySelector('h1');
+    const itemName = itemNameElement ? itemNameElement.textContent.trim() : 'Current Item';
+
+    // Create mock float data for quick alerts
+    const mockFloatData = {
+      floatValue: 0.0,
+      wearName: 'Any Condition',
+      precision: 4
+    };
+
+    setPriceAlert(itemName, targetPrice, alertType, null, mockFloatData);
+
+    // Clear inputs
+    document.getElementById('cs2-quick-target-price').value = '';
+
+    // Hide container
+    alertContainer.style.display = 'none';
+    alertToggle.style.right = '20px';
+  });
+
+  console.log('✅ Floating alert button created');
+}
+
+/**
+ * Create market intelligence floating button and dashboard
+ */
+function createMarketIntelligenceButton() {
+  // Don't create if already exists
+  if (document.getElementById('cs2-market-intelligence-toggle')) {
+    return;
+  }
+
+  console.log('📊 Creating market intelligence button...');
+
+  // Create floating intelligence container
+  const intelligenceContainer = document.createElement('div');
+  intelligenceContainer.id = 'cs2-intelligence-container';
+  intelligenceContainer.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 320px;
+    width: 350px;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 15px;
+    z-index: 9998;
+    display: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: white;
+    max-height: 400px;
+    overflow-y: auto;
+  `;
+
+  intelligenceContainer.innerHTML = `
+    <h4 style="margin: 0 0 10px 0; color: #4CAF50; font-size: 16px;">📊 Market Intelligence</h4>
+    <div id="intelligence-content" style="font-size: 13px;">
+      <div style="text-align: center; padding: 20px; color: #888;">
+        Loading market data...
+      </div>
+    </div>
+  `;
+
+  // Create floating intelligence toggle button
+  const intelligenceToggle = document.createElement('button');
+  intelligenceToggle.id = 'cs2-market-intelligence-toggle';
+  intelligenceToggle.innerHTML = '📊';
+  intelligenceToggle.title = 'Market Intelligence Dashboard';
+  intelligenceToggle.style.cssText = `
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 10000;
+    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+    transition: all 0.2s ease;
+  `;
+
+  intelligenceToggle.addEventListener('mouseover', () => {
+    intelligenceToggle.style.transform = 'scale(1.1)';
+    intelligenceToggle.style.boxShadow = '0 4px 15px rgba(59, 130, 246, 0.5)';
+  });
+
+  intelligenceToggle.addEventListener('mouseout', () => {
+    intelligenceToggle.style.transform = 'scale(1)';
+    intelligenceToggle.style.boxShadow = '0 2px 10px rgba(59, 130, 246, 0.3)';
+  });
+
+  intelligenceToggle.addEventListener('click', async () => {
+    const isVisible = intelligenceContainer.style.display !== 'none';
+    intelligenceContainer.style.display = isVisible ? 'none' : 'block';
+    intelligenceToggle.style.right = isVisible ? '20px' : '390px';
+
+    if (!isVisible) {
+      await loadMarketIntelligence();
+    }
+  });
+
+  document.body.appendChild(intelligenceContainer);
+  document.body.appendChild(intelligenceToggle);
+
+  console.log('✅ Market intelligence button created');
+}
+
+/**
+ * Load market intelligence data
+ */
+async function loadMarketIntelligence() {
+  const contentDiv = document.getElementById('intelligence-content');
+  if (!contentDiv) return;
+
+  contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Loading market data...</div>';
+
+  try {
+    // Get current item name
+    const itemNameElement = document.querySelector('.market_listing_largeimage .market_listing_item_name') ||
+                           document.querySelector('h1.market_listing_item_name') ||
+                           document.querySelector('.market_listing_item_name');
+
+    const itemName = itemNameElement ? itemNameElement.textContent.trim() : null;
+
+    if (!itemName) {
+      contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">No item data available</div>';
+      return;
+    }
+
+    // Request price history from background
+    const response = await chrome.runtime.sendMessage({
+      action: 'getPriceHistory',
+      itemName: itemName
+    });
+
+    if (response.success && response.data) {
+      displayMarketIntelligence(response.data);
+    } else {
+      contentDiv.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: #888;">
+          No historical data yet for this item.<br>
+          <small>Data will be collected as you browse market listings.</small>
+        </div>
+      `;
+    }
+
+  } catch (error) {
+    console.error('Market intelligence error:', error);
+    contentDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6b6b;">Error loading market data</div>';
+  }
+}
+
+/**
+ * Display market intelligence data
+ */
+function displayMarketIntelligence(itemData) {
+  const contentDiv = document.getElementById('intelligence-content');
+  if (!contentDiv || !itemData) return;
+
+  const priceHistory = itemData.priceHistory || [];
+  const floatHistory = itemData.floatHistory || [];
+
+  if (priceHistory.length === 0) {
+    contentDiv.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: #888;">
+        No price data collected yet.<br>
+        <small>Data will appear as you browse similar items.</small>
+      </div>
+    `;
+    return;
+  }
+
+  // Calculate market statistics
+  const prices = priceHistory.map(p => p.price);
+  const latestPrice = prices[prices.length - 1];
+  const oldestPrice = prices[0];
+  const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const priceChange = ((latestPrice - oldestPrice) / oldestPrice * 100).toFixed(1);
+  const volatility = ((maxPrice - minPrice) / avgPrice * 100).toFixed(1);
+
+  // Calculate float statistics if available
+  let floatStats = '';
+  if (floatHistory.length > 1) {
+    const floats = floatHistory.map(f => f.floatValue);
+    const avgFloat = floats.reduce((a, b) => a + b, 0) / floats.length;
+    const minFloatSeen = Math.min(...floats);
+    const maxFloatSeen = Math.max(...floats);
+
+    floatStats = `
+      <div style="background: rgba(34, 197, 94, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+        <strong>Float Trends (${floats.length} samples)</strong><br>
+        Average: ${avgFloat.toFixed(4)} | Range: ${minFloatSeen.toFixed(4)} - ${maxFloatSeen.toFixed(4)}
+      </div>
+    `;
+  }
+
+  const trendColor = parseFloat(priceChange) > 0 ? '#22c55e' : parseFloat(priceChange) < 0 ? '#ef4444' : '#6b7280';
+  const volatilityColor = parseFloat(volatility) > 30 ? '#ef4444' : parseFloat(volatility) > 15 ? '#f59e0b' : '#22c55e';
+
+  contentDiv.innerHTML = `
+    <div style="margin-bottom: 10px;">
+      <strong>${itemData.itemName}</strong>
+      <div style="font-size: 11px; color: #888;">${priceHistory.length} price points collected</div>
+    </div>
+
+    ${floatStats}
+
+    <div style="background: rgba(59, 130, 246, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+      <strong>Price Statistics</strong><br>
+      Current: $${latestPrice.toFixed(2)} | Average: $${avgPrice.toFixed(2)}<br>
+      Range: $${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}<br>
+      <span style="color: ${trendColor};">Trend: ${priceChange > 0 ? '↗' : priceChange < 0 ? '↘' : '→'} ${priceChange}%</span><br>
+      <span style="color: ${volatilityColor};">Volatility: ${volatility}%</span>
+    </div>
+
+    <div style="background: rgba(168, 85, 247, 0.1); padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+      <strong>Investment Signals</strong><br>
+      ${latestPrice < avgPrice * 0.9 ? '🟢 Below average price' :
+        latestPrice > avgPrice * 1.1 ? '🔴 Above average price' : '🟡 Near average price'}<br>
+      ${parseFloat(volatility) > 25 ? '⚠️ High volatility - risky' : '✅ Stable pricing'}
+    </div>
+
+    <div style="font-size: 11px; color: #888; text-align: center; margin-top: 10px;">
+      Data collected since ${new Date(itemData.firstSeen).toLocaleDateString()}
+    </div>
+  `;
+}
+
+/**
+ * Show price alert dialog
+ */
+function showPriceAlertDialog(floatData) {
+  // Remove existing dialog if any
+  const existing = document.getElementById('cs2-price-alert-modal');
+  if (existing) existing.remove();
+
+  // Get item name from page
+  const itemNameElement = document.querySelector('.market_listing_largeimage .market_listing_item_name');
+  const itemName = itemNameElement ? itemNameElement.textContent.trim() : 'CS2 Item';
+
+  // Create modal
+  const modal = document.createElement('div');
+  modal.id = 'cs2-price-alert-modal';
+  modal.innerHTML = `
+    <div style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    ">
+      <div style="
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        border: 1px solid #3a3a3a;
+        border-radius: 8px;
+        padding: 20px;
+        width: 400px;
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      ">
+        <h3 style="margin: 0 0 15px 0; color: #4CAF50;">🔔 Set Price Alert</h3>
+        <div style="margin-bottom: 15px;">
+          <strong>${itemName}</strong><br>
+          <span style="opacity: 0.8;">Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} (${floatData.wearName})</span>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; margin-bottom: 5px;">Target Price:</label>
+          <input type="number" id="cs2-target-price" placeholder="Enter price" style="
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            background: #3a3a3a;
+            color: white;
+            font-size: 14px;
+          ">
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; margin-bottom: 5px;">Alert Type:</label>
+          <select id="cs2-alert-type" style="
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            background: #3a3a3a;
+            color: white;
+            font-size: 14px;
+          ">
+            <option value="below">Alert when price goes below</option>
+            <option value="above">Alert when price goes above</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; margin-bottom: 5px;">Max Float (optional):</label>
+          <input type="number" id="cs2-max-float" placeholder="Leave empty for any float" step="0.001" min="0" max="1" style="
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            background: #3a3a3a;
+            color: white;
+            font-size: 14px;
+          ">
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="cs2-alert-cancel" style="
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #6b7280;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+          ">Cancel</button>
+          <button id="cs2-alert-confirm" style="
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #22c55e;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+          ">Set Alert</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Event listeners
+  document.getElementById('cs2-alert-cancel').addEventListener('click', () => modal.remove());
+  document.getElementById('cs2-alert-confirm').addEventListener('click', () => {
+    const targetPrice = parseFloat(document.getElementById('cs2-target-price').value);
+    const alertType = document.getElementById('cs2-alert-type').value;
+    const maxFloat = document.getElementById('cs2-max-float').value;
+
+    if (!targetPrice || targetPrice <= 0) {
+      alert('Please enter a valid target price');
+      return;
+    }
+
+    setPriceAlert(itemName, targetPrice, alertType, maxFloat || null, floatData);
+    modal.remove();
+  });
+
+  // Close on background click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+}
+
+/**
+ * Set price alert in storage
+ */
+async function setPriceAlert(itemName, targetPrice, alertType, maxFloat, floatData) {
+  const alertKey = `alert_${itemName}_${Date.now()}`;
+
+  try {
+    await chrome.runtime.sendMessage({
+      action: 'saveAlert',
+      alertData: {
+        id: alertKey,
+        itemName,
+        targetPrice,
+        alertType,
+        maxFloat,
+        currentFloat: floatData.floatValue,
+        wearName: floatData.wearName,
+        timestamp: Date.now(),
+        active: true
+      }
+    });
+
+    // Show success notification
+    showNotification(`Alert set: ${itemName} ${alertType} $${targetPrice}${maxFloat ? ` (max float: ${maxFloat})` : ''}`, 'success');
+  } catch (error) {
+    showNotification('Failed to set alert. Please try again.', 'error');
+    console.error('Alert save error:', error);
+  }
+}
+
+/**
+ * Show notification
+ */
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : '#3b82f6'};
+    color: white;
+    padding: 12px 20px;
+    border-radius: 6px;
+    z-index: 10001;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: slideInRight 0.3s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+  notification.textContent = message;
+
+  // Add animation styles
+  if (!document.getElementById('cs2-notification-styles')) {
+    const style = document.createElement('style');
+    style.id = 'cs2-notification-styles';
+    style.textContent = `
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(notification);
+
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.style.animation = 'slideInRight 0.3s ease-out reverse';
+      setTimeout(() => notification.remove(), 300);
+    }
+  }, 4000);
 }
 
 // Message listener for popup commands

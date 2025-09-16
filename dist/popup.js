@@ -11,10 +11,6 @@ const defaultSettings = {
   enableMarketIntelligence: true,
   enableVisualFloatBars: true,
   showPercentileRank: true,
-  highlightLow: true,
-  highlightHigh: true,
-  lowThreshold: 0.07,
-  highThreshold: 0.93,
   floatPrecision: 4,
   cacheExpiry: 24,
   language: 'en'
@@ -70,7 +66,7 @@ function updateSettingsUI() {
   });
 
   // Update input fields
-  ['lowThreshold', 'highThreshold', 'floatPrecision', 'cacheExpiry'].forEach(key => {
+  ['floatPrecision', 'cacheExpiry'].forEach(key => {
     const element = document.getElementById(key);
     if (element && currentSettings[key] !== undefined) {
       element.value = currentSettings[key];
@@ -118,7 +114,7 @@ async function reloadFloats() {
     // Get current active tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
-    if (tab && tab.url.includes('steamcommunity.com')) {
+    if (tab && (tab.url.includes('steamcommunity.com/market/') || tab.url.includes('steamcommunity.com/id/') && tab.url.includes('/inventory') || tab.url.includes('steamcommunity.com/profiles/') && tab.url.includes('/inventory'))) {
       // Inject script to reload floats
       await chrome.tabs.sendMessage(tab.id, { action: 'reloadFloats' });
       
@@ -133,11 +129,29 @@ async function reloadFloats() {
         button.style.background = '';
       }, 2000);
     } else {
-      alert('Please navigate to the Steam Community Market or Inventory to use this feature.');
+      // Show friendly message in popup
+      const button = document.getElementById('reloadFloats');
+      const originalText = button.textContent;
+      button.textContent = '⚠️ Visit Steam Market/Inventory';
+      button.style.background = '#f97316';
+
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.background = '';
+      }, 3000);
     }
   } catch (error) {
     console.error('Failed to reload floats:', error);
-    alert('Failed to reload floats. Make sure you are on a Steam page.');
+    // Show friendly error message
+    const button = document.getElementById('reloadFloats');
+    const originalText = button.textContent;
+    button.textContent = '❌ Error - Try Again';
+    button.style.background = '#ef4444';
+
+    setTimeout(() => {
+      button.textContent = originalText;
+      button.style.background = '';
+    }, 3000);
   }
 }
 
@@ -149,12 +163,16 @@ async function checkManualFloat() {
   const resultDiv = document.getElementById('manualResult');
   
   if (!inspectLink) {
-    alert('Please enter an inspect link');
+    // Show validation message in result area
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div style="color: #f97316;">⚠️ Please enter an inspect link first</div>';
     return;
   }
-  
+
   if (!inspectLink.includes('steam://rungame/730')) {
-    alert('Please enter a valid CS2 inspect link');
+    // Show validation message in result area
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div style="color: #f97316;">⚠️ Please enter a valid CS2 inspect link</div>';
     return;
   }
   
@@ -176,7 +194,7 @@ async function checkManualFloat() {
           <strong>${data.weaponName || 'CS2 Item'}</strong>
         </div>
         <div style="margin-bottom: 6px;">
-          <strong>Float:</strong> ${data.floatValue.toFixed(6)} (${data.wearName})
+          <strong>Float:</strong> ${data.floatValue.toFixed(data.precision || 4)} (${data.wearName})
         </div>
       `;
       
@@ -245,14 +263,12 @@ function initialize() {
   });
 
   // Setup input fields
-  ['lowThreshold', 'highThreshold', 'floatPrecision', 'cacheExpiry'].forEach(key => {
+  ['floatPrecision', 'cacheExpiry'].forEach(key => {
     const element = document.getElementById(key);
     if (element) {
       element.addEventListener('input', (e) => {
-        const value = key === 'floatPrecision' || key === 'cacheExpiry' ? 
-                      parseInt(e.target.value) : 
-                      parseFloat(e.target.value);
-        
+        const value = parseInt(e.target.value);
+
         if (!isNaN(value)) {
           currentSettings[key] = value;
           saveSettings();
@@ -274,19 +290,33 @@ function initialize() {
   document.getElementById('reloadFloats').addEventListener('click', reloadFloats);
   
   document.getElementById('clearCache').addEventListener('click', async () => {
-    if (confirm('Clear all cached float data?')) {
+    const button = document.getElementById('clearCache');
+    const originalText = button.textContent;
+
+    try {
+      // Show clearing status
+      button.textContent = '🗑️ Clearing...';
+      button.style.background = '#6b7280';
+
       await clearCache();
-      
-      // Show feedback
-      const button = document.getElementById('clearCache');
-      const originalText = button.textContent;
-      button.textContent = '✓ Cleared!';
+
+      // Show success
+      button.textContent = '✓ Cache Cleared!';
       button.style.background = '#22c55e';
-      
+
       setTimeout(() => {
         button.textContent = originalText;
         button.style.background = '';
       }, 2000);
+    } catch (error) {
+      // Show error
+      button.textContent = '❌ Clear Failed';
+      button.style.background = '#ef4444';
+
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.background = '';
+      }, 3000);
     }
   });
   
