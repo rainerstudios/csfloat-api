@@ -136,21 +136,24 @@ async function processFloatRequest(inspectLink, precision = 4) {
   // Calculate float percentile (mock)
   const floatPercentile = 50 + Math.random() * 40; // Mock percentile
   
-  // Create enhanced data
+  // Create enhanced data using CSGOFloat API fields
   const enhancedData = {
     floatValue: rawData.floatvalue,
     paintSeed: rawData.paintseed,
-    wearName: getWearName(rawData.floatvalue),
-    weaponName: getWeaponName(rawData.defindex),
-    skinName: `Skin ${rawData.paintindex}`,
+    wearName: rawData.wear_name || getWearName(rawData.floatvalue),
+    weaponName: rawData.weapon_type || getWeaponName(rawData.defindex),
+    skinName: rawData.item_name || `Skin ${rawData.paintindex}`,
     precision: precision,
-    fullItemName: `${getWeaponName(rawData.defindex)} | Skin ${rawData.paintindex}`,
+    fullItemName: rawData.full_item_name || `${rawData.weapon_type || 'Item'} | ${rawData.item_name || 'Skin'}`,
     stickers: rawData.stickers || [],
-    keychains: rawData.keychains || [],
     statTrakKills: rawData.killeatervalue,
     floatPercentile: floatPercentile,
     investmentScore: calculateInvestmentScore(rawData.floatvalue, rawData.rarity, blueGemInfo),
     blueGemInfo: blueGemInfo,
+    min: rawData.min,
+    max: rawData.max,
+    rarity: rawData.rarity_name,
+    quality: rawData.quality_name,
     timestamp: Date.now()
   };
   

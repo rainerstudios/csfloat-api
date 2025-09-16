@@ -3,6 +3,7 @@
   "name": "CS2 Float Extension Enhanced",
   "version": "2.0.0",
   "description": "Advanced CS2 float checker with AI-powered pattern recognition, blue gem detection, and market intelligence",
+  "default_locale": "en",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -53,8 +54,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "icons/*", 
+        "icons/*",
         "styles/*",
+        "floatSorter.js",
         "lib/page_scripts/*.js",
         "lib/components/*.js",
         "lib/services/*.js"

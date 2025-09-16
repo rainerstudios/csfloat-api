@@ -96,7 +96,7 @@ async function processFloatValues() {
       });
 
       if (response && response.enhancedData) {
-        addFloatDisplay(item, response.enhancedData);
+        await addFloatDisplay(item, response.enhancedData);
       }
     } catch (error) {
       console.error('Error fetching float:', error);
@@ -110,7 +110,10 @@ async function processFloatValues() {
 /**
  * Add float display to an item
  */
-function addFloatDisplay(itemElement, floatData) {
+async function addFloatDisplay(itemElement, floatData) {
+  // Get current settings
+  const settingsResponse = await chrome.runtime.sendMessage({ action: 'getSettings' });
+  const settings = settingsResponse?.settings || {};
   const container = document.createElement('div');
   container.className = 'cs2-float-enhanced';
   container.style.cssText = `
@@ -138,23 +141,28 @@ function addFloatDisplay(itemElement, floatData) {
   const floatRange = maxFloat - minFloat;
   const floatPosition = ((floatData.floatValue - minFloat) / floatRange) * 100;
 
-  // Create visible display
+  // Create visible display with conditional float bar
   let displayHtml = `
     <div style="display: flex; align-items: center; gap: 8px;">
-      <span><strong>${floatData.weaponName || 'Item'}</strong> Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} ${floatData.wearName}</span>
+      <span><strong>${floatData.weaponName || 'Item'}</strong> Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} ${floatData.wearName}</span>`;
+
+  // Add visual float bar if enabled
+  if (settings.enableVisualFloatBars !== false) {
+    displayHtml += `
       <div style="width: 60px; height: 6px; background: linear-gradient(to right, #22c55e 0%, #84cc16 20%, #eab308 40%, #f97316 70%, #dc2626 100%); border-radius: 3px; position: relative;">
         <div style="position: absolute; left: ${floatPosition}%; top: 0; width: 2px; height: 6px; background: white; border-radius: 1px; box-shadow: 0 0 2px rgba(0,0,0,0.5);"></div>
-      </div>
-    </div>
-  `;
+      </div>`;
+  }
 
-  // Add pattern seed if available
-  if (floatData.paintSeed) {
+  displayHtml += `</div>`;
+
+  // Add pattern seed if pattern analysis is enabled
+  if (settings.enablePatternAnalysis !== false && floatData.paintSeed) {
     displayHtml += `<div style="opacity: 0.9;">Pattern: #${floatData.paintSeed}</div>`;
   }
 
-  // Add blue gem info if detected
-  if (floatData.blueGemInfo) {
+  // Add blue gem info if blue gem detection is enabled
+  if (settings.enableBlueGemDetection !== false && floatData.blueGemInfo) {
     displayHtml += `
       <div style="background: rgba(0,100,255,0.3); padding: 4px 8px; border-radius: 4px;">
         💎 ${floatData.blueGemInfo.bluePercentage}% Blue
@@ -162,9 +170,9 @@ function addFloatDisplay(itemElement, floatData) {
     `;
   }
 
-  // Add investment score
-  if (floatData.investmentScore) {
-    const color = floatData.investmentScore >= 7 ? '#00ff00' : 
+  // Add investment score if market intelligence is enabled
+  if (settings.enableMarketIntelligence !== false && floatData.investmentScore) {
+    const color = floatData.investmentScore >= 7 ? '#00ff00' :
                   floatData.investmentScore >= 5 ? '#ffff00' : '#ff9900';
     displayHtml += `
       <div style="color: ${color}; font-weight: bold;">
@@ -566,6 +574,30 @@ function initializeInventoryChecker() {
   // Initialize the inventory checker
   InventoryFloatChecker.init();
 }
+
+// Message listener for popup commands
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'reloadFloats') {
+    console.log('🔄 Reload floats requested from popup');
+
+    // Clear existing float displays (market and inventory)
+    document.querySelectorAll('.cs2-float-enhanced, .cs2-inventory-float').forEach(el => el.remove());
+
+    // Clear processed items tracker
+    processedItems.clear();
+
+    if (window.location.pathname.includes('/market/')) {
+      // Re-process market items
+      processFloatValues();
+    } else if (window.location.pathname.includes('/inventory')) {
+      // Re-initialize inventory checker
+      initializeInventoryChecker();
+    }
+
+    sendResponse({ success: true });
+    return true; // Required for async response
+  }
+});
 
 // Start when DOM is ready
 if (document.readyState === 'loading') {
