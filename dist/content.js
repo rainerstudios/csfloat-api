@@ -618,9 +618,11 @@ function resetFilter() {
 function initialize() {
   console.log('🔧 Initializing CS2 Float Extension...');
 
-  // Create filter UI on market pages
-  if (window.location.pathname.includes('/market/')) {
-    // Create sorting bar directly
+  // Handle market pages - but only item listing pages, not the main market page
+  if (window.location.pathname.includes('/market/listings/')) {
+    console.log('📈 Market listing page detected');
+
+    // Create sorting bar for item listings
     setTimeout(() => {
       createSortingBar();
     }, 2000);
@@ -651,16 +653,18 @@ function initialize() {
           });
         }
       });
-      
+
       if (hasNewItems) {
         setTimeout(processFloatValues, 500);
       }
     });
-    
+
     observer.observe(document.body, {
       childList: true,
       subtree: true
     });
+  } else if (window.location.pathname === '/market/' || window.location.pathname === '/market') {
+    console.log('📊 Main market page detected - no float features needed');
   }
   
   // Handle inventory pages
