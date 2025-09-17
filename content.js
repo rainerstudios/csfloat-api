@@ -4,6 +4,7 @@
  */
 
 console.log('🚀 CS2 Float Extension loaded on:', window.location.href);
+console.log('🔧 Extension version: 2.0.0 with Doppler phase detection');
 
 // Global state
 let minFloat = 0.00;
@@ -75,35 +76,103 @@ async function filterItems() {
  */
 async function processFloatValues() {
   const items = document.querySelectorAll('.market_listing_row');
-  
+  console.log(`🔍 Found ${items.length} market listing items to process`);
+
   for (const item of items) {
     // Skip if already processed
     if (item.querySelector('.cs2-float-enhanced')) {
+      console.log('⏭️  Skipping already processed item');
       continue;
     }
 
     // Find inspect link
     const inspectBtn = item.querySelector('a[href*="steam://rungame/730"]');
-    if (!inspectBtn) continue;
+    if (!inspectBtn) {
+      console.log('❌ No inspect link found in item');
+      continue;
+    }
 
     const inspectLink = inspectBtn.href;
-    
+    console.log('🔗 Processing inspect link:', inspectLink);
+
     try {
       // Request float data from background
+      console.log('📨 Sending message to background script...');
       const response = await chrome.runtime.sendMessage({
         action: 'fetchEnhancedFloat',
         inspectLink: inspectLink
       });
 
+      console.log('📬 Received response from background:', response);
+
       if (response && response.enhancedData) {
+        console.log('✅ Enhanced data received:', response.enhancedData);
         await addFloatDisplay(item, response.enhancedData);
+      } else {
+        console.log('❌ No enhanced data in response');
       }
     } catch (error) {
-      console.error('Error fetching float:', error);
+      console.error('❌ Error fetching float:', error);
     }
 
     // Add delay to avoid rate limiting
     await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  console.log('🏁 Finished processing all items');
+}
+
+/**
+ * Process single item page (like individual Doppler listings)
+ */
+async function processSingleItemPage() {
+  console.log('🔍 Processing single item page...');
+
+  // Skip if already processed
+  if (document.querySelector('.cs2-float-enhanced-single')) {
+    console.log('Single item already processed');
+    return;
+  }
+
+  // Look for inspect link in various locations on single item pages
+  const inspectSelectors = [
+    'a[href*="steam://rungame/730"]',
+    '.market_listing_actions a[href*="steam://rungame/730"]',
+    '.market_listing_iteminfo a[href*="steam://rungame/730"]',
+    '.item_market_actions a[href*="steam://rungame/730"]'
+  ];
+
+  let inspectBtn = null;
+  for (const selector of inspectSelectors) {
+    inspectBtn = document.querySelector(selector);
+    if (inspectBtn) {
+      console.log('Found inspect link using selector:', selector);
+      break;
+    }
+  }
+
+  if (!inspectBtn) {
+    console.log('No inspect link found on single item page');
+    return;
+  }
+
+  const inspectLink = inspectBtn.href;
+  console.log('Processing inspect link:', inspectLink);
+
+  try {
+    // Request float data from background
+    const response = await chrome.runtime.sendMessage({
+      action: 'fetchEnhancedFloat',
+      inspectLink: inspectLink
+    });
+
+    if (response && response.enhancedData) {
+      await addSingleItemFloatDisplay(response.enhancedData);
+    } else {
+      console.log('No enhanced data received for single item');
+    }
+  } catch (error) {
+    console.error('Error fetching float for single item:', error);
   }
 }
 
@@ -303,6 +372,126 @@ function addCopyToClipboardFunctionality(container, floatData) {
 }
 
 /**
+ * Add float display to a single item page
+ */
+async function addSingleItemFloatDisplay(floatData) {
+  console.log('Adding float display to single item page:', floatData);
+
+  // Get current settings
+  const settingsResponse = await chrome.runtime.sendMessage({ action: 'getSettings' });
+  const settings = settingsResponse?.settings || {};
+
+  // Create container for single item
+  const container = document.createElement('div');
+  container.className = 'cs2-float-enhanced-single';
+  container.style.cssText = `
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    color: white;
+    padding: 15px 20px;
+    margin: 15px 0;
+    border-radius: 8px;
+    font-size: 14px;
+    border: 1px solid #3a3a3a;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+
+  // Build display content
+  let displayHtml = `
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+      <h3 style="margin: 0; color: #22c55e; font-size: 18px;">🎯 CS2 Float Data</h3>
+      <span style="opacity: 0.8; font-size: 12px;">Enhanced Analysis</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+      <div>
+        <div style="font-weight: bold; margin-bottom: 8px;">Float Information</div>
+        <div style="font-size: 24px; color: #ffd700; margin-bottom: 4px;">${floatData.floatValue.toFixed(floatData.precision || 4)}</div>
+        <div style="color: #999; font-size: 12px;">Pattern Seed: #${floatData.paintSeed}</div>
+      </div>`;
+
+  // Add Doppler phase if available
+  if (floatData.dopplerPhase) {
+    const phaseColors = {
+      'Ruby': '#ff0000',
+      'Sapphire': '#0066ff',
+      'Black Pearl': '#1a1a1a',
+      'Emerald': '#00ff00',
+      'Phase 1': '#8b4513',
+      'Phase 2': '#ff69b4',
+      'Phase 3': '#00ced1',
+      'Phase 4': '#ffd700'
+    };
+    const color = phaseColors[floatData.dopplerPhase] || '#ffffff';
+    displayHtml += `
+      <div>
+        <div style="font-weight: bold; margin-bottom: 8px;">Doppler Phase</div>
+        <div style="font-size: 20px; color: ${color}; font-weight: bold; text-shadow: 0 0 4px rgba(0,0,0,0.8);">
+          ◆ ${floatData.dopplerPhase}
+        </div>
+      </div>`;
+  }
+
+  // Add origin info if available
+  if (floatData.origin && floatData.origin !== 'Unknown' && floatData.origin !== '') {
+    displayHtml += `
+      <div>
+        <div style="font-weight: bold; margin-bottom: 8px;">Origin</div>
+        <div style="color: #999;">${floatData.origin}</div>
+      </div>`;
+  }
+
+  displayHtml += '</div>';
+
+  // Add custom name if available
+  if (floatData.customName) {
+    displayHtml += `
+      <div style="margin-top: 12px; padding: 8px; background: rgba(255, 215, 0, 0.1); border-radius: 4px;">
+        <span style="color: #ffd700; font-style: italic; font-size: 16px;">📛 "${floatData.customName}"</span>
+      </div>`;
+  }
+
+  // Add sticker details with wear if available
+  if (floatData.stickers && floatData.stickers.length > 0) {
+    displayHtml += '<div style="margin-top: 12px;"><div style="font-weight: bold; margin-bottom: 8px;">Stickers</div>';
+    floatData.stickers.forEach((sticker, index) => {
+      if (sticker && sticker.name) {
+        const wearPercent = sticker.wear ? `(${Math.round(sticker.wear * 100)}% wear)` : '';
+        displayHtml += `<div style="margin-bottom: 4px; color: #ccc;">🏷️ Slot ${index + 1}: ${sticker.name} ${wearPercent}</div>`;
+      }
+    });
+    displayHtml += '</div>';
+  }
+
+  container.innerHTML = displayHtml;
+
+  // Find a good place to insert the float display
+  const insertionTargets = [
+    '.market_listing_iteminfo',
+    '.market_listing_largeimage',
+    '.market_listing_nav',
+    '.market_listing_item_name_block'
+  ];
+
+  let inserted = false;
+  for (const selector of insertionTargets) {
+    const target = document.querySelector(selector);
+    if (target) {
+      target.parentNode.insertBefore(container, target.nextSibling);
+      inserted = true;
+      console.log(`Float display inserted after ${selector}`);
+      break;
+    }
+  }
+
+  if (!inserted) {
+    // Fallback: append to body
+    document.body.appendChild(container);
+    console.log('Float display appended to body as fallback');
+  }
+}
+
+/**
  * Add float display to an item
  */
 async function addFloatDisplay(itemElement, floatData) {
@@ -336,10 +525,10 @@ async function addFloatDisplay(itemElement, floatData) {
   const floatRange = maxFloat - minFloat;
   const floatPosition = ((floatData.floatValue - minFloat) / floatRange) * 100;
 
-  // Create visible display with conditional float bar
+  // Create visible display with conditional float bar - removed weapon name and wear name to avoid overlap
   let displayHtml = `
     <div style="display: flex; align-items: center; gap: 8px;">
-      <span class="cs2-float-copyable" style="cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy float value"><strong>${floatData.weaponName || 'Item'}</strong> Float: ${floatData.floatValue.toFixed(floatData.precision || 4)} ${floatData.wearName}</span>`;
+      <span class="cs2-float-copyable" style="cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy float value">Float: ${floatData.floatValue.toFixed(floatData.precision || 4)}</span>`;
 
   // Add visual float bar if enabled
   if (settings.enableVisualFloatBars !== false) {
@@ -354,6 +543,45 @@ async function addFloatDisplay(itemElement, floatData) {
   // Add pattern seed if pattern analysis is enabled
   if (settings.enablePatternAnalysis !== false && floatData.paintSeed) {
     displayHtml += `<div class="cs2-pattern-copyable" style="opacity: 0.9; cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy pattern seed">Pattern: #${floatData.paintSeed}</div>`;
+  }
+
+  // Add Doppler phase if available
+  if (floatData.dopplerPhase) {
+    const phaseColors = {
+      'Ruby': '#ff0000',
+      'Sapphire': '#0066ff',
+      'Black Pearl': '#1a1a1a',
+      'Emerald': '#00ff00',
+      'Phase 1': '#8b4513',
+      'Phase 2': '#ff69b4',
+      'Phase 3': '#00ced1',
+      'Phase 4': '#ffd700'
+    };
+    const color = phaseColors[floatData.dopplerPhase] || '#ffffff';
+    displayHtml += `<div style="color: ${color}; font-weight: bold; text-shadow: 0 0 2px rgba(0,0,0,0.8);">◆ ${floatData.dopplerPhase}</div>`;
+  }
+
+  // Add origin info inline with pattern if available
+  if (floatData.origin && floatData.origin !== 'Unknown' && floatData.origin !== '') {
+    displayHtml += `<div style="opacity: 0.8; font-size: 11px; color: #999;">Origin: ${floatData.origin}</div>`;
+  }
+
+  // Add custom name if available
+  if (floatData.customName) {
+    displayHtml += `<div style="opacity: 0.9; font-style: italic; color: #ffd700; font-size: 11px;">📛 "${floatData.customName}"</div>`;
+  }
+
+  // Add sticker details with wear if available
+  if (floatData.stickers && floatData.stickers.length > 0) {
+    let stickerHtml = '<div style="font-size: 10px; opacity: 0.9; margin-top: 4px;">';
+    floatData.stickers.forEach((sticker, index) => {
+      if (sticker && sticker.name) {
+        const wearPercent = sticker.wear ? `(${Math.round(sticker.wear * 100)}% wear)` : '';
+        stickerHtml += `<div>🏷️ Slot ${index + 1}: ${sticker.name} ${wearPercent}</div>`;
+      }
+    });
+    stickerHtml += '</div>';
+    displayHtml += stickerHtml;
   }
 
   // Blue gem detection removed - requires proper API support
@@ -611,13 +839,22 @@ function resetFilter() {
 function initialize() {
   console.log('🔧 Initializing CS2 Float Extension...');
 
-  // Handle market pages - but only item listing pages, not the main market page
+  // Handle market pages - both listing pages and individual item pages
   if (window.location.pathname.includes('/market/listings/')) {
-    console.log('📈 Market listing page detected');
+    console.log('📈 Market page detected:', window.location.pathname);
 
-    // Create sorting bar for item listings
+    // Check if this is a search results page (multiple listings) or individual item page
     setTimeout(() => {
-      createSortingBar();
+      const searchResults = document.querySelector('#searchResultsRows');
+      const marketListings = document.querySelectorAll('.market_listing_row');
+
+      if (searchResults && marketListings.length > 0) {
+        console.log('📊 Multiple listings page - creating sorting bar');
+        createSortingBar();
+      } else {
+        console.log('📋 Individual item page - processing single item');
+        processSingleItemPage();
+      }
     }, 2000);
 
     // Initialize integrated market intelligence (replaces floating buttons)
@@ -640,7 +877,7 @@ function initialize() {
       mutations.forEach(mutation => {
         if (mutation.addedNodes.length > 0) {
           mutation.addedNodes.forEach(node => {
-            if (node.nodeType === 1 && node.classList?.contains('market_listing_row')) {
+            if (node.nodeType === 1 && (node.classList?.contains('market_listing_row') || node.classList?.contains('market_listing_iteminfo'))) {
               hasNewItems = true;
             }
           });
@@ -648,7 +885,11 @@ function initialize() {
       });
 
       if (hasNewItems) {
-        setTimeout(processFloatValues, 500);
+        setTimeout(() => {
+          processFloatValues();
+          // Also check for single item pages
+          setTimeout(processSingleItemPage, 500);
+        }, 500);
       }
     });
 

@@ -44,6 +44,39 @@ function getWeaponName(defindex) {
 // CSGOFloat API doesn't provide blue percentage data directly
 
 /**
+ * Get Doppler phase from paint index
+ */
+function getDopplerPhase(paintIndex) {
+  const dopplerPhases = {
+    418: 'Phase 1',
+    419: 'Phase 2',
+    420: 'Phase 3',
+    421: 'Phase 4',
+    415: 'Ruby',
+    416: 'Sapphire',
+    417: 'Black Pearl',
+    569: 'Phase 1',
+    570: 'Phase 2',
+    571: 'Phase 3',
+    572: 'Phase 4',
+    568: 'Emerald',
+    618: 'Phase 2',
+    619: 'Sapphire',
+    617: 'Black Pearl',
+    852: 'Phase 1',
+    853: 'Phase 2',
+    854: 'Phase 3',
+    855: 'Phase 4',
+    1119: 'Emerald',
+    1120: 'Phase 1',
+    1121: 'Phase 2',
+    1122: 'Phase 3',
+    1123: 'Phase 4'
+  };
+  return dopplerPhases[paintIndex] || null;
+}
+
+/**
  * Calculate investment score
  */
 function calculateInvestmentScore(floatValue, rarity, blueGemInfo) {
@@ -105,10 +138,15 @@ async function processFloatRequest(inspectLink, precision = 4) {
   // Calculate float percentile (mock)
   const floatPercentile = 50 + Math.random() * 40; // Mock percentile
   
+  // Get Doppler phase if applicable
+  const dopplerPhase = getDopplerPhase(rawData.paintindex);
+
   // Create enhanced data using CSGOFloat API fields
   const enhancedData = {
     floatValue: rawData.floatvalue,
     paintSeed: rawData.paintseed,
+    paintIndex: rawData.paintindex,
+    defIndex: rawData.defindex,
     wearName: rawData.wear_name || getWearName(rawData.floatvalue),
     weaponName: rawData.weapon_type || getWeaponName(rawData.defindex),
     skinName: rawData.item_name || `Skin ${rawData.paintindex}`,
@@ -116,7 +154,11 @@ async function processFloatRequest(inspectLink, precision = 4) {
     fullItemName: rawData.full_item_name || `${rawData.weapon_type || 'Item'} | ${rawData.item_name || 'Skin'}`,
     stickers: rawData.stickers || [],
     statTrakKills: rawData.killeatervalue,
-    floatPercentile: floatPercentile,
+    customName: rawData.customname,
+    origin: rawData.origin_name,
+    imageUrl: rawData.imageurl,
+    dopplerPhase: dopplerPhase, // ← ADD: Doppler phase detection
+    floatPercentile: floatPercentile, // TODO: Remove this fake data
     investmentScore: calculateInvestmentScore(rawData.floatvalue, rawData.rarity, null),
     blueGemInfo: blueGemInfo,
     min: rawData.min,
@@ -235,6 +277,7 @@ chrome.runtime.onInstalled.addListener((details) => {
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('📨 Background received message:', request);
+  console.log('📨 Sender tab:', sender.tab?.url);
   
   // Handle enhanced float requests
   if (request.action === 'fetchEnhancedFloat') {
