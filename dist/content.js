@@ -407,7 +407,7 @@ async function addSingleItemFloatDisplay(floatData) {
       <div>
         <div style="font-weight: bold; margin-bottom: 8px;">Float Information</div>
         <div style="font-size: 24px; color: #ffd700; margin-bottom: 4px;">${floatData.floatValue.toFixed(floatData.precision || 4)}</div>
-        <div style="color: #999; font-size: 12px;">Pattern Seed: #${floatData.paintSeed}</div>
+        <div style="color: #999; font-size: 12px;">Pattern: #${floatData.paintSeed}</div>
       </div>`;
 
   // Add Doppler phase if available
@@ -428,6 +428,20 @@ async function addSingleItemFloatDisplay(floatData) {
         <div style="font-weight: bold; margin-bottom: 8px;">Doppler Phase</div>
         <div style="font-size: 20px; color: ${color}; font-weight: bold; text-shadow: 0 0 4px rgba(0,0,0,0.8);">
           ◆ ${floatData.dopplerPhase}
+        </div>
+      </div>`;
+  }
+
+  // Add fade percentage if available
+  if (floatData.fadePercentage !== null && floatData.fadePercentage !== undefined) {
+    const fadeColor = floatData.fadePercentage >= 95 ? '#ff6b6b' :
+                     floatData.fadePercentage >= 90 ? '#ffa500' :
+                     floatData.fadePercentage >= 80 ? '#ffeb3b' : '#9e9e9e';
+    displayHtml += `
+      <div>
+        <div style="font-weight: bold; margin-bottom: 8px;">Fade Percentage</div>
+        <div style="font-size: 20px; color: ${fadeColor}; font-weight: bold;">
+          🌈 ${floatData.fadePercentage}%
         </div>
       </div>`;
   }
@@ -508,6 +522,7 @@ async function addFloatDisplay(itemElement, floatData) {
     border-radius: 6px;
     font-size: 12px;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     border: 1px solid #3a3a3a;
@@ -525,7 +540,7 @@ async function addFloatDisplay(itemElement, floatData) {
   const floatRange = maxFloat - minFloat;
   const floatPosition = ((floatData.floatValue - minFloat) / floatRange) * 100;
 
-  // Create visible display with conditional float bar - removed weapon name and wear name to avoid overlap
+  // Create visible display with conditional float bar
   let displayHtml = `
     <div style="display: flex; align-items: center; gap: 8px;">
       <span class="cs2-float-copyable" style="cursor: pointer; transition: background-color 0.2s ease;" title="Click to copy float value">Float: ${floatData.floatValue.toFixed(floatData.precision || 4)}</span>`;
@@ -561,6 +576,14 @@ async function addFloatDisplay(itemElement, floatData) {
     displayHtml += `<div style="color: ${color}; font-weight: bold; text-shadow: 0 0 2px rgba(0,0,0,0.8);">◆ ${floatData.dopplerPhase}</div>`;
   }
 
+  // Add fade percentage if available
+  if (floatData.fadePercentage !== null && floatData.fadePercentage !== undefined) {
+    const fadeColor = floatData.fadePercentage >= 95 ? '#ff6b6b' :
+                     floatData.fadePercentage >= 90 ? '#ffa500' :
+                     floatData.fadePercentage >= 80 ? '#ffeb3b' : '#9e9e9e';
+    displayHtml += `<div style="color: ${fadeColor}; font-weight: bold;">🌈 ${floatData.fadePercentage}% Fade</div>`;
+  }
+
   // Add origin info inline with pattern if available
   if (floatData.origin && floatData.origin !== 'Unknown' && floatData.origin !== '') {
     displayHtml += `<div style="opacity: 0.8; font-size: 11px; color: #999;">Origin: ${floatData.origin}</div>`;
@@ -584,8 +607,6 @@ async function addFloatDisplay(itemElement, floatData) {
     displayHtml += stickerHtml;
   }
 
-  // Blue gem detection removed - requires proper API support
-
   // Add investment score if market intelligence is enabled
   if (settings.enableMarketIntelligence !== false && floatData.investmentScore) {
     const color = floatData.investmentScore >= 7 ? '#00ff00' :
@@ -597,21 +618,20 @@ async function addFloatDisplay(itemElement, floatData) {
     `;
   }
 
-  // Add price alert button if on market pages
+  // Add price alert button at the end if on market pages
   if (window.location.pathname.includes('/market/listings/')) {
     displayHtml += `
-      <div style="margin-top: 4px;">
-        <button class="cs2-price-alert-btn" style="
-          background: linear-gradient(135deg, #f97316, #ea580c);
-          color: white;
-          border: none;
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-size: 10px;
-          cursor: pointer;
-          opacity: 0.8;
-        ">🔔 Alert</button>
-      </div>
+      <button class="cs2-price-alert-btn" style="
+        background: linear-gradient(135deg, #f97316, #ea580c);
+        color: white;
+        border: none;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        cursor: pointer;
+        opacity: 0.8;
+        flex-shrink: 0;
+      ">🔔 Alert</button>
     `;
   }
 
