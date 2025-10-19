@@ -51,8 +51,23 @@ class InfiniteScrollManager {
      * Check if we're on a Steam Market page
      */
     isSteamMarketPage() {
-        return window.location.href.includes('steamcommunity.com/market/') ||
-               window.location.href.includes('steamcommunity.com/market/search');
+        // Check if window.location exists
+        if (!window.location || !window.location.href) {
+            return false;
+        }
+
+        const url = window.location.href;
+
+        // Only enable on search/browse pages, NOT on individual listing pages
+        // Individual listings have /market/listings/ in URL - we skip those
+        if (url.includes('steamcommunity.com/market/listings/')) {
+            console.log('[CS2 Float] Infinite scroll disabled on individual listing page');
+            return false;
+        }
+
+        // Enable on search and main market pages
+        return url.includes('steamcommunity.com/market/search') ||
+               url.includes('steamcommunity.com/market/?appid=');
     }
 
     /**
@@ -61,7 +76,7 @@ class InfiniteScrollManager {
     parseInitialState() {
         try {
             // Steam exposes market data in g_oSearchResults
-            if (typeof g_oSearchResults !== 'undefined') {
+            if (typeof g_oSearchResults !== 'undefined' && g_oSearchResults) {
                 this.totalResults = g_oSearchResults.total_count || 0;
                 this.currentPage = this.getCurrentPageNumber();
 
@@ -71,9 +86,13 @@ class InfiniteScrollManager {
                 this.hasMorePages = this.currentPage < totalPages;
 
                 console.log(`[CS2 Float] Total: ${this.totalResults}, Page: ${this.currentPage}/${totalPages}`);
+            } else {
+                console.log('[CS2 Float] No search results found - infinite scroll disabled');
+                this.hasMorePages = false;
             }
         } catch (error) {
             console.error('[CS2 Float] Error parsing initial state:', error);
+            this.hasMorePages = false;
         }
     }
 
@@ -160,7 +179,16 @@ class InfiniteScrollManager {
 
             // Fetch next page
             const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error(`Steam API returned status ${response.status}`);
+            }
+
             const data = await response.json();
+
+            if (!data || typeof data !== 'object') {
+                throw new Error('Invalid JSON response from Steam');
+            }
 
             if (data.success && data.results_html) {
                 // Append new results to the page
