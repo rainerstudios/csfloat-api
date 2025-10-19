@@ -218,6 +218,11 @@ async function trackItemPrice(itemElement, floatData) {
 
     console.log(`📊 Tracking: ${itemName} - $${price} (Float: ${floatData.floatValue})`);
 
+    // Display Buff163 price if integration is available
+    if (window.buff163Integration && itemName && price > 0) {
+      await window.buff163Integration.displayBuff163Price(itemElement, itemName, price);
+    }
+
   } catch (error) {
     console.error('Price tracking error:', error);
   }
@@ -1666,6 +1671,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Required for async response
   }
 });
+
+// Listen for infinite scroll new items event
+window.addEventListener('cs2float:newItemsLoaded', (event) => {
+  console.log(`[CS2 Float] New items loaded by infinite scroll (page ${event.detail.page})`);
+
+  // Process float values for newly loaded items
+  setTimeout(() => {
+    processFloatValues();
+  }, 500); // Small delay to ensure DOM is ready
+});
+
+// Make processFloatValues globally accessible for infinite scroll
+window.processFloatValues = processFloatValues;
 
 // Start when DOM is ready
 if (document.readyState === 'loading') {

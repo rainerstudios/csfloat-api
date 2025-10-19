@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "CS2 Float Extension Enhanced",
-  "version": "2.0.0",
-  "description": "Advanced CS2 float checker with AI-powered pattern recognition, blue gem detection, and market intelligence",
+  "name": "CS2 Float Checker - The Complete Trading Solution",
+  "version": "1.0.1",
+  "description": "Professional CS2 float checker with fade percentages, Doppler phases, investment scoring, and market intelligence",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon16.png",
@@ -11,10 +11,7 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
-    "storage",
-    "tabs",
-    "alarms",
-    "notifications"
+    "storage"
   ],
   "host_permissions": [
     "https://steamcommunity.com/*",
@@ -37,14 +34,14 @@
         "https://steamcommunity.com/id/*/tradehistory",
         "https://steamcommunity.com/profiles/*/tradehistory"
       ],
-      "js": ["lib/marketIntelligence.js", "lib/inventoryEnhancer.js", "content.js"],
+      "js": ["lib/marketIntelligence.js", "lib/inventoryEnhancer.js", "src/infiniteScroll.js", "src/buff163Integration.js", "src/multiSeedFilter.js", "content.js"],
       "css": ["styles/main.css", "styles/inventory.css"],
       "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "CS2 Float Extension Enhanced",
+    "default_title": "CS2 Float Checker - The Complete Trading Solution",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
