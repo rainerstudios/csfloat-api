@@ -226,6 +226,169 @@ app.get('/stats', (req, res) => {
     });
 });
 
+// Trade Protection Tracker - Ownership History Endpoint
+app.get('/api/ownership-history/:floatId', async (req, res) => {
+    try {
+        const floatId = req.params.floatId;
+
+        if (!floatId || isNaN(floatId)) {
+            return res.status(400).json({ error: 'Invalid float ID' });
+        }
+
+        const history = await postgres.getOwnershipHistory(floatId);
+        const tradeRisk = calculateTradeRisk(history);
+
+        res.json({
+            floatId: floatId,
+            ownershipHistory: history,
+            tradeRisk: tradeRisk,
+            totalOwners: history.length
+        });
+    } catch (e) {
+        winston.error('Error fetching ownership history:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Float Rarity Score Endpoint
+app.get('/api/float-rarity/:defindex/:paintindex/:floatvalue', async (req, res) => {
+    try {
+        const { defindex, paintindex, floatvalue } = req.params;
+
+        if (!defindex || !paintindex || !floatvalue) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        const rarityData = await postgres.getFloatRarity(
+            parseInt(defindex),
+            parseInt(paintindex),
+            parseFloat(floatvalue)
+        );
+
+        res.json(rarityData);
+    } catch (e) {
+        winston.error('Error calculating float rarity:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Pattern Statistics for Trade-Up Calculator
+app.get('/api/pattern-stats/:defindex/:paintindex', async (req, res) => {
+    try {
+        const { defindex, paintindex } = req.params;
+
+        if (!defindex || !paintindex) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        const stats = await postgres.getPatternStats(
+            parseInt(defindex),
+            parseInt(paintindex)
+        );
+
+        res.json(stats);
+    } catch (e) {
+        winston.error('Error fetching pattern stats:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Buff163 Price Proxy (CORS bypass)
+app.get('/api/buff163-proxy', async (req, res) => {
+    try {
+        const { search } = req.query;
+
+        if (!search) {
+            return res.status(400).json({ error: 'Missing search parameter' });
+        }
+
+        // Note: Buff163 API requires authentication and proper headers
+        // This is a simplified proxy - you'll need to add your own Buff163 API credentials
+        const buffApiUrl = `https://buff.163.com/api/market/goods`;
+        const params = new URLSearchParams({
+            game: 'csgo',
+            page_num: 1,
+            sort_by: 'price.asc',
+            search: search
+        });
+
+        const response = await fetch(`${buffApiUrl}?${params.toString()}`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9'
+            }
+        });
+
+        if (!response.ok) {
+            winston.warn(`Buff163 API returned status ${response.status}`);
+            // Return mock data if API fails
+            return res.json({
+                success: false,
+                message: 'Buff163 API unavailable - showing mock data'
+            });
+        }
+
+        const data = await response.json();
+
+        // Transform Buff163 response to our format
+        const transformedData = {
+            success: true,
+            items: data.data?.items?.map(item => ({
+                id: item.id,
+                market_hash_name: item.market_hash_name,
+                sell_min_price: item.sell_min_price,
+                sell_num: item.sell_num
+            })) || []
+        };
+
+        res.json(transformedData);
+
+    } catch (e) {
+        winston.error('Error proxying Buff163 request:', e);
+        // Return mock data on error
+        res.json({
+            success: false,
+            message: 'Buff163 proxy error - using fallback data'
+        });
+    }
+});
+
+// Helper function to calculate trade risk
+function calculateTradeRisk(history) {
+    if (!history || history.length === 0) {
+        return {
+            risk: 'UNKNOWN',
+            message: 'No trade history available',
+            canReverse: false
+        };
+    }
+
+    const latestTrade = history[0];
+    const tradeDate = new Date(latestTrade.created_at);
+    const now = new Date();
+    const daysSinceLastTrade = (now - tradeDate) / (1000 * 60 * 60 * 24);
+
+    if (daysSinceLastTrade < 7) {
+        return {
+            risk: 'HIGH',
+            message: '⚠️ Item traded within 7 days - REVERSIBLE!',
+            canReverse: true,
+            daysRemaining: Math.ceil(7 - daysSinceLastTrade),
+            lastTradeDate: tradeDate.toISOString(),
+            reversibleUntil: new Date(tradeDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        };
+    }
+
+    return {
+        risk: 'SAFE',
+        message: '✅ Safe to trade (>7 days since last trade)',
+        canReverse: false,
+        daysSinceLastTrade: Math.floor(daysSinceLastTrade),
+        lastTradeDate: tradeDate.toISOString()
+    };
+}
+
 const http_server = require('http').Server(app);
 http_server.listen(CONFIG.http.port);
 winston.info('Listening for HTTP on port: ' + CONFIG.http.port);
