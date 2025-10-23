@@ -8,6 +8,12 @@ const API_URL = 'https://api.cs2floatchecker.com';
 const cache = new Map();
 const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
+// Batch Processing Configuration
+const BATCH_SIZE = 10; // Process up to 10 items at once
+const BATCH_DELAY = 100; // Wait 100ms to collect items before sending batch
+const batchQueue = [];
+let batchTimer = null;
+
 /**
  * Helper function to get wear name from float value
  */
@@ -288,23 +294,143 @@ function calculateInvestmentScore(floatValue, rarity, paintIndex, dopplerPhase, 
 }
 
 /**
- * Fetch raw float data from API
+ * Batch Processing System
+ * Collects multiple requests and sends them together to save Steam API calls
  */
-async function fetchFloatData(inspectLink) {
+
+/**
+ * Add item to batch queue
+ * @param {string} inspectLink - Inspect URL
+ * @returns {Promise} Promise that resolves with the float data
+ */
+function addToBatchQueue(inspectLink) {
+  return new Promise((resolve, reject) => {
+    // Add to queue with callback
+    batchQueue.push({
+      link: inspectLink,
+      resolve,
+      reject
+    });
+
+    // Clear existing timer
+    if (batchTimer) {
+      clearTimeout(batchTimer);
+    }
+
+    // If queue is full, process immediately
+    if (batchQueue.length >= BATCH_SIZE) {
+      processBatch();
+    } else {
+      // Wait for more items or timeout
+      batchTimer = setTimeout(processBatch, BATCH_DELAY);
+    }
+  });
+}
+
+/**
+ * Process queued items as a batch
+ */
+async function processBatch() {
+  if (batchQueue.length === 0) return;
+
+  // Clear timer
+  if (batchTimer) {
+    clearTimeout(batchTimer);
+    batchTimer = null;
+  }
+
+  // Get items from queue
+  const batch = batchQueue.splice(0, BATCH_SIZE);
+  console.log(`📦 Processing batch of ${batch.length} items`);
+
+  try {
+    // Prepare bulk request
+    const links = batch.map(item => ({ link: item.link }));
+
+    const response = await fetch(`${API_URL}/bulk`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ links })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Batch API returned ${response.status}`);
+    }
+
+    const results = await response.json();
+
+    // Distribute results back to individual requests
+    batch.forEach((item, index) => {
+      const result = results[index];
+      if (result && result.iteminfo) {
+        item.resolve(result.iteminfo);
+      } else if (result && result.error) {
+        item.reject(new Error(result.error));
+      } else {
+        item.reject(new Error('No data received'));
+      }
+    });
+
+    console.log(`✅ Batch of ${batch.length} items processed successfully`);
+
+  } catch (error) {
+    console.error('❌ Batch processing error:', error);
+
+    // Fallback: Process individually if batch fails
+    console.log('⚠️ Falling back to individual requests for batch');
+    for (const item of batch) {
+      try {
+        const data = await fetchFloatDataSingle(item.link);
+        item.resolve(data);
+      } catch (err) {
+        item.reject(err);
+      }
+    }
+  }
+}
+
+/**
+ * Fetch float data for single item (fallback method)
+ * @param {string} inspectLink - Inspect URL
+ * @returns {Promise} Float data
+ */
+async function fetchFloatDataSingle(inspectLink) {
   try {
     const url = `${API_URL}/?url=${encodeURIComponent(inspectLink)}`;
     const response = await fetch(url);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
     return data.iteminfo || null;
-    
+
   } catch (error) {
-    console.error('API fetch error:', error);
-    return null;
+    console.error('Single API fetch error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch raw float data from API (with batch processing)
+ */
+async function fetchFloatData(inspectLink) {
+  try {
+    // Use batch processing for better performance
+    const data = await addToBatchQueue(inspectLink);
+    return data;
+  } catch (error) {
+    console.error('Batch fetch error, trying single:', error);
+    // Fallback to single request if batch fails
+    try {
+      return await fetchFloatDataSingle(inspectLink);
+    } catch (fallbackError) {
+      console.error('Single fetch also failed:', fallbackError);
+      return null;
+    }
   }
 }
 
