@@ -204,10 +204,23 @@ class Buff163Integration {
         // Create price display
         const priceDisplay = this.createPriceDisplay(buffData, steamPrice, arbitrage);
 
-        // Find appropriate container
-        const priceContainer = listingElement.querySelector('.market_listing_price');
-        if (priceContainer) {
-            priceContainer.appendChild(priceDisplay);
+        // Find float display container first (insert after float info for better visibility)
+        const floatDisplay = listingElement.querySelector('.cs2-float-display, .float-display');
+        if (floatDisplay) {
+            // Insert after float display
+            floatDisplay.parentNode.insertBefore(priceDisplay, floatDisplay.nextSibling);
+        } else {
+            // Fallback: Find item name block and insert after it
+            const itemNameBlock = listingElement.querySelector('.market_listing_item_name_block');
+            if (itemNameBlock) {
+                itemNameBlock.parentNode.insertBefore(priceDisplay, itemNameBlock.nextSibling);
+            } else {
+                // Last resort: append to price container
+                const priceContainer = listingElement.querySelector('.market_listing_price');
+                if (priceContainer) {
+                    priceContainer.appendChild(priceDisplay);
+                }
+            }
         }
     }
 
@@ -284,12 +297,15 @@ class Buff163Integration {
         style.id = 'buff163-integration-styles';
         style.textContent = `
             .buff163-price-display {
-                margin-top: 8px;
-                padding: 10px;
-                background: linear-gradient(135deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.05) 100%);
-                border: 1px solid rgba(255, 107, 107, 0.3);
-                border-radius: 6px;
-                font-size: 11px;
+                margin: 10px 0;
+                padding: 12px;
+                background: linear-gradient(135deg, rgba(255, 107, 107, 0.15) 0%, rgba(255, 107, 107, 0.08) 100%);
+                border: 2px solid rgba(255, 107, 107, 0.4);
+                border-radius: 8px;
+                font-size: 12px;
+                box-shadow: 0 2px 8px rgba(255, 107, 107, 0.15);
+                width: 100%;
+                box-sizing: border-box;
             }
 
             .buff163-header {
@@ -305,9 +321,9 @@ class Buff163Integration {
             }
 
             .buff163-label {
-                font-weight: 600;
+                font-weight: 700;
                 color: #ff6b6b;
-                font-size: 11px;
+                font-size: 13px;
             }
 
             .mock-badge {
@@ -330,23 +346,24 @@ class Buff163Integration {
             .buff163-price {
                 font-weight: 700;
                 color: #ff6b6b;
-                font-size: 13px;
+                font-size: 15px;
             }
 
             .buff163-price-usd {
                 color: #a1a1aa;
-                font-size: 11px;
+                font-size: 13px;
+                font-weight: 600;
             }
 
             .buff163-arbitrage {
                 display: flex;
                 align-items: center;
-                gap: 6px;
-                padding: 4px 8px;
-                border-radius: 4px;
-                margin-bottom: 6px;
-                font-weight: 600;
-                font-size: 11px;
+                gap: 8px;
+                padding: 6px 10px;
+                border-radius: 6px;
+                margin-bottom: 8px;
+                font-weight: 700;
+                font-size: 13px;
             }
 
             .buff163-arbitrage.high-profit {
@@ -406,14 +423,18 @@ class Buff163Integration {
             .buff163-link {
                 color: #ff6b6b;
                 text-decoration: none;
-                font-weight: 600;
-                font-size: 11px;
-                transition: color 0.2s;
+                font-weight: 700;
+                font-size: 12px;
+                transition: all 0.2s;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
             }
 
             .buff163-link:hover {
                 color: #ff5252;
                 text-decoration: underline;
+                transform: translateX(2px);
             }
 
             .buff163-volume {
