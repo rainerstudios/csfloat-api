@@ -12,14 +12,13 @@
 class Buff163Integration {
     constructor() {
         this.enabled = true;
-        this.apiBaseUrl = 'https://buff.163.com/api/market/goods';
+        // Use Skin Broker API - works without CORS issues
+        this.apiBaseUrl = 'https://skin.broker/api/ext';
         this.priceCache = new Map();
         this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
         this.exchangeRate = null; // CNY to USD
         this.pendingRequests = new Map();
-
-        // Proxy URL for CORS bypass (you'll need to set up a proxy)
-        this.proxyUrl = 'http://localhost:3000/api/buff163-proxy';
+        this.defaultCurrency = 'USD';
 
         this.init();
     }
@@ -91,37 +90,40 @@ class Buff163Integration {
     }
 
     /**
-     * Internal method to fetch from Buff163 API
+     * Internal method to fetch from Skin Broker API
      * @private
      */
     async _fetchFromBuff163(itemName) {
         try {
-            // Note: Buff163 API requires authentication and has CORS restrictions
-            // This is a simplified version - in production, use your proxy server
+            // Use Skin Broker API which provides real Buff163 prices without CORS issues
+            const url = new URL(this.apiBaseUrl);
+            url.searchParams.append('marketName', itemName);
+            url.searchParams.append('currency', this.defaultCurrency);
 
-            // Try proxy endpoint first
-            const response = await fetch(`${this.proxyUrl}?search=${encodeURIComponent(itemName)}`, {
+            const response = await fetch(url, {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Accept': 'application/json'
                 }
             });
 
             if (!response.ok) {
-                throw new Error(`Buff163 API error: ${response.status}`);
+                throw new Error(`Skin Broker API error: ${response.status}`);
             }
 
             const data = await response.json();
 
-            if (data.success && data.items && data.items.length > 0) {
-                const item = data.items[0];
+            // Skin Broker API returns price data in the response
+            if (data && data.buff_price) {
+                const buffPriceCNY = parseFloat(data.buff_price);
+                const buffPriceUSD = parseFloat(data.buff_price_usd || buffPriceCNY * this.exchangeRate);
 
                 return {
-                    itemName: item.market_hash_name || itemName,
-                    priceCNY: parseFloat(item.sell_min_price || 0),
-                    priceUSD: parseFloat(item.sell_min_price || 0) * this.exchangeRate,
-                    volume: parseInt(item.sell_num || 0),
-                    url: `https://buff.163.com/goods/${item.id}`,
+                    itemName: itemName,
+                    priceCNY: buffPriceCNY,
+                    priceUSD: buffPriceUSD,
+                    volume: parseInt(data.buff_volume || 0),
+                    url: data.buff_url || `https://buff.163.com/market/csgo#tab=selling&page_num=1&search=${encodeURIComponent(itemName)}`,
                     available: true
                 };
             }
@@ -130,32 +132,10 @@ class Buff163Integration {
 
         } catch (error) {
             console.error('[CS2 Float] Error fetching Buff163 price:', error);
-
-            // Return mock data for development/testing
-            return this._getMockPrice(itemName);
+            return null;
         }
     }
 
-    /**
-     * Get mock price data for testing
-     * @private
-     */
-    _getMockPrice(itemName) {
-        // Generate mock price based on item name hash
-        const hash = itemName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const mockPriceCNY = 10 + (hash % 500);
-        const mockPriceUSD = mockPriceCNY * this.exchangeRate;
-
-        return {
-            itemName: itemName,
-            priceCNY: mockPriceCNY,
-            priceUSD: mockPriceUSD,
-            volume: Math.floor(10 + (hash % 100)),
-            url: 'https://buff.163.com',
-            available: true,
-            isMock: true // Mark as mock data
-        };
-    }
 
     /**
      * Calculate arbitrage opportunity
@@ -244,7 +224,7 @@ class Buff163Integration {
         container.innerHTML = `
             <div class="buff163-header">
                 <img src="https://buff.163.com/favicon.ico" alt="Buff163" class="buff163-icon">
-                <span class="buff163-label">Buff163 Estimate</span>
+                <span class="buff163-label">Buff163 Price</span>
             </div>
 
             <div class="buff163-price-row">
