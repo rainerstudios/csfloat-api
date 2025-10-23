@@ -659,6 +659,11 @@ async function addFloatDisplay(itemElement, floatData) {
   // Track price history for market intelligence
   await trackItemPrice(itemElement, floatData);
 
+  // Add 3D item preview if image URL is available
+  if (floatData.imageUrl && window.item3DPreview) {
+    window.item3DPreview.attachToListing(itemElement, floatData.imageUrl);
+  }
+
   // Insert after the item name
   const itemName = itemElement.querySelector('.market_listing_item_name_block');
   if (itemName) {

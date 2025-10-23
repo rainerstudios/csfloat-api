@@ -244,8 +244,7 @@ class Buff163Integration {
         container.innerHTML = `
             <div class="buff163-header">
                 <img src="https://buff.163.com/favicon.ico" alt="Buff163" class="buff163-icon">
-                <span class="buff163-label">Buff163</span>
-                ${buffData.isMock ? '<span class="mock-badge" title="Mock data - connect to real API">DEMO</span>' : ''}
+                <span class="buff163-label">Buff163 Estimate</span>
             </div>
 
             <div class="buff163-price-row">
