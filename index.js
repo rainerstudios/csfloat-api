@@ -129,9 +129,16 @@ app.use(function (req, res, next) {
 
         if (allowed) {
             res.header('Access-Control-Allow-Origin', req.get('origin'));
-            res.header('Access-Control-Allow-Methods', 'GET');
+            res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
         }
     }
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
     next()
 });
 
