@@ -463,6 +463,14 @@ async function fetchFloatDataSingle(inspectLink) {
  * Fetch raw float data from API (with batch processing)
  */
 async function fetchFloatData(inspectLink) {
+  // Batch processing is now ENABLED - VPS deployed with CORS fix ✅
+  const BATCH_ENABLED = true;
+
+  if (!BATCH_ENABLED) {
+    console.log('📝 Batch processing disabled - using single requests');
+    return await fetchFloatDataSingle(inspectLink);
+  }
+
   try {
     // Use batch processing for better performance
     const data = await addToBatchQueue(inspectLink);
