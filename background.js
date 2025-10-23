@@ -343,52 +343,75 @@ async function processBatch() {
   const batch = batchQueue.splice(0, BATCH_SIZE);
   console.log(`📦 Processing batch of ${batch.length} items`);
 
-  try {
-    // Prepare bulk request
-    const links = batch.map(item => ({ link: item.link }));
+  // Retry logic for server errors
+  let retryCount = 0;
+  const MAX_RETRIES = 3;
 
-    const response = await fetch(`${API_URL}/bulk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ links })
-    });
+  async function attemptBatchFetch() {
+    try {
+      // Prepare bulk request
+      const links = batch.map(item => ({ link: item.link }));
 
-    if (!response.ok) {
-      throw new Error(`Batch API returned ${response.status}`);
-    }
+      const response = await fetch(`${API_URL}/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ links }),
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
 
-    const results = await response.json();
-
-    // Distribute results back to individual requests
-    batch.forEach((item, index) => {
-      const result = results[index];
-      if (result && result.iteminfo) {
-        item.resolve(result.iteminfo);
-      } else if (result && result.error) {
-        item.reject(new Error(result.error));
-      } else {
-        item.reject(new Error('No data received'));
+      // Check for server errors (500, 502, 503) and retry
+      if (response.status >= 500 && response.status < 600) {
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          const backoffDelay = 1000 * Math.pow(2, retryCount - 1); // Exponential backoff: 1s, 2s, 4s
+          console.log(`⚠️ Server error ${response.status}, retrying in ${backoffDelay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          return attemptBatchFetch(); // Recursive retry
+        } else {
+          throw new Error(`Batch API returned ${response.status} after ${MAX_RETRIES} retries`);
+        }
       }
-    });
 
-    console.log(`✅ Batch of ${batch.length} items processed successfully`);
+      if (!response.ok) {
+        throw new Error(`Batch API returned ${response.status}`);
+      }
 
-  } catch (error) {
-    console.error('❌ Batch processing error:', error);
+      const results = await response.json();
 
-    // Fallback: Process individually if batch fails
-    console.log('⚠️ Falling back to individual requests for batch');
-    for (const item of batch) {
-      try {
-        const data = await fetchFloatDataSingle(item.link);
-        item.resolve(data);
-      } catch (err) {
-        item.reject(err);
+      // Distribute results back to individual requests
+      batch.forEach((item, index) => {
+        const result = results[index];
+        if (result && result.iteminfo) {
+          item.resolve(result.iteminfo);
+        } else if (result && result.error) {
+          item.reject(new Error(result.error));
+        } else {
+          item.reject(new Error('No data received'));
+        }
+      });
+
+      console.log(`✅ Batch of ${batch.length} items processed successfully`);
+
+    } catch (error) {
+      console.error('❌ Batch processing error:', error);
+
+      // Fallback: Process individually if batch fails
+      console.log('⚠️ Falling back to individual requests for batch');
+      for (const item of batch) {
+        try {
+          const data = await fetchFloatDataSingle(item.link);
+          item.resolve(data);
+        } catch (err) {
+          item.reject(err);
+        }
       }
     }
   }
+
+  // Start the batch fetch with retry logic
+  await attemptBatchFetch();
 }
 
 /**
@@ -397,21 +420,43 @@ async function processBatch() {
  * @returns {Promise} Float data
  */
 async function fetchFloatDataSingle(inspectLink) {
-  try {
-    const url = `${API_URL}/?url=${encodeURIComponent(inspectLink)}`;
-    const response = await fetch(url);
+  let retryCount = 0;
+  const MAX_RETRIES = 3;
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+  async function attemptFetch() {
+    try {
+      const url = `${API_URL}/?url=${encodeURIComponent(inspectLink)}`;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
+
+      // Retry on server errors
+      if (response.status >= 500 && response.status < 600) {
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          const backoffDelay = 1000 * Math.pow(2, retryCount - 1);
+          console.log(`⚠️ Server error ${response.status}, retrying in ${backoffDelay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          return attemptFetch();
+        } else {
+          throw new Error(`API returned ${response.status} after ${MAX_RETRIES} retries`);
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.iteminfo || null;
+
+    } catch (error) {
+      console.error('Single API fetch error:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    return data.iteminfo || null;
-
-  } catch (error) {
-    console.error('Single API fetch error:', error);
-    throw error;
   }
+
+  return attemptFetch();
 }
 
 /**

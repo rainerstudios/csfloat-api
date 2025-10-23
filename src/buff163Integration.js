@@ -162,46 +162,65 @@ class Buff163Integration {
      * @param {number} steamPrice - Steam Market price
      */
     async displayBuff163Price(listingElement, itemName, steamPrice) {
+        console.log('[Buff163] displayBuff163Price called', {itemName, steamPrice, enabled: this.enabled});
+
         if (!this.enabled) {
+            console.log('[Buff163] Integration disabled');
             return;
         }
 
         // Check if already processed
         if (listingElement.querySelector('.buff163-price-display')) {
+            console.log('[Buff163] Already processed this listing');
             return;
         }
+
+        console.log('[Buff163] Fetching price for:', itemName);
 
         // Fetch Buff163 price
         const buffData = await this.fetchBuff163Price(itemName);
 
+        console.log('[Buff163] Fetched data:', buffData);
+
         if (!buffData || !buffData.available) {
+            console.log('[Buff163] No data available or item not found');
             return;
         }
 
         // Calculate arbitrage
         const arbitrage = this.calculateArbitrage(steamPrice, buffData.priceUSD);
 
+        console.log('[Buff163] Creating price display with arbitrage:', arbitrage);
+
         // Create price display
         const priceDisplay = this.createPriceDisplay(buffData, steamPrice, arbitrage);
 
         // Find float display container first (insert after float info for better visibility)
-        const floatDisplay = listingElement.querySelector('.cs2-float-display, .float-display');
+        const floatDisplay = listingElement.querySelector('.cs2-float-enhanced, .cs2-float-display, .float-display');
         if (floatDisplay) {
             // Insert after float display
+            console.log('[Buff163] Inserting after float display');
             floatDisplay.parentNode.insertBefore(priceDisplay, floatDisplay.nextSibling);
         } else {
             // Fallback: Find item name block and insert after it
             const itemNameBlock = listingElement.querySelector('.market_listing_item_name_block');
             if (itemNameBlock) {
+                console.log('[Buff163] Inserting after item name block');
                 itemNameBlock.parentNode.insertBefore(priceDisplay, itemNameBlock.nextSibling);
             } else {
-                // Last resort: append to price container
-                const priceContainer = listingElement.querySelector('.market_listing_price');
-                if (priceContainer) {
-                    priceContainer.appendChild(priceDisplay);
+                // Last resort: Find the market listing row and append
+                const marketRow = listingElement.querySelector('.market_listing_row_inner, .market_listing_right_cell');
+                if (marketRow) {
+                    console.log('[Buff163] Appending to market row');
+                    marketRow.appendChild(priceDisplay);
+                } else {
+                    console.log('[Buff163] No suitable container found, appending to listing element');
+                    listingElement.appendChild(priceDisplay);
                 }
             }
         }
+
+        console.log('[Buff163] Price display added successfully');
     }
 
     /**

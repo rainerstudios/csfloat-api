@@ -11,6 +11,58 @@ let minFloat = 0.00;
 let maxFloat = 1.00;
 let isProcessing = false;
 let processedItems = new Set();
+let extensionContextValid = true;
+
+/**
+ * Check if extension context is still valid
+ */
+function isExtensionContextValid() {
+  try {
+    // Try to access chrome.runtime - this will throw if context is invalidated
+    if (!chrome.runtime?.id) {
+      return false;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Show warning banner when extension context is invalidated
+ */
+function showExtensionInvalidatedWarning() {
+  if (document.getElementById('cs2-extension-warning')) {
+    return; // Already shown
+  }
+
+  const banner = document.createElement('div');
+  banner.id = 'cs2-extension-warning';
+  banner.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: white;
+    padding: 12px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 999999;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  `;
+  banner.innerHTML = `
+    ⚠️ CS2 Float Extension was updated. <a href="#" style="color: white; text-decoration: underline;">Reload this page</a> to restore functionality.
+  `;
+
+  banner.querySelector('a').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.location.reload();
+  });
+
+  document.body.appendChild(banner);
+}
 
 // OLD LOADFLOATSORTER FUNCTION REMOVED - NOW USING DIRECT SORTING BAR
 
@@ -96,6 +148,13 @@ async function processFloatValues() {
     console.log('🔗 Processing inspect link:', inspectLink);
 
     try {
+      // Check if extension context is still valid
+      if (!isExtensionContextValid()) {
+        console.error('❌ Extension context invalidated');
+        showExtensionInvalidatedWarning();
+        return;
+      }
+
       // Request float data from background
       console.log('📨 Sending message to background script...');
       const response = await chrome.runtime.sendMessage({
@@ -112,7 +171,12 @@ async function processFloatValues() {
         console.log('❌ No enhanced data in response');
       }
     } catch (error) {
-      console.error('❌ Error fetching float:', error);
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.error('❌ Extension context invalidated');
+        showExtensionInvalidatedWarning();
+      } else {
+        console.error('❌ Error fetching float:', error);
+      }
     }
 
     // Add delay to avoid rate limiting
@@ -180,16 +244,25 @@ async function processSingleItemPage() {
  * Track item price and float data for market intelligence
  */
 async function trackItemPrice(itemElement, floatData) {
+  console.log('[trackItemPrice] Called with floatData:', floatData);
+
   try {
     // Extract price from the item element
     const priceElement = itemElement.querySelector('.market_listing_price_with_fee, .market_listing_price, .normal_price');
-    if (!priceElement) return;
+    if (!priceElement) {
+      console.log('[trackItemPrice] No price element found');
+      return;
+    }
 
     const priceText = priceElement.textContent.trim();
     const priceMatch = priceText.match(/[\d.,]+/);
-    if (!priceMatch) return;
+    if (!priceMatch) {
+      console.log('[trackItemPrice] No price match found in:', priceText);
+      return;
+    }
 
     const price = parseFloat(priceMatch[0].replace(',', '.'));
+    console.log('[trackItemPrice] Extracted price:', price);
 
     // Try multiple strategies to get a consistent item name
     let itemName = floatData.fullItemName || floatData.skinName || 'Unknown Item';
