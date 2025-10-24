@@ -36,7 +36,7 @@
         "https://steamcommunity.com/id/*/tradehistory",
         "https://steamcommunity.com/profiles/*/tradehistory"
       ],
-      "js": ["lib/marketIntelligence.js", "lib/inventoryEnhancer.js", "src/infiniteScroll.js", "src/buff163Integration.js", "src/multiSeedFilter.js", "src/item3DPreview.js", "content.js"],
+      "js": ["lib/marketIntelligence.js", "lib/inventoryEnhancer.js", "src/infiniteScroll.js", "src/buff163Integration.js", "src/item3DPreview.js", "content.js"],
       "css": ["styles/main.css", "styles/inventory.css"],
       "run_at": "document_idle"
     }
