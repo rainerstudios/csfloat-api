@@ -488,8 +488,8 @@ async function fetchFloatData(inspectLink) {
 }
 
 /**
- * Build working Steam CDN image URL by transforming old API URLs
- * @param {string} oldImageUrl - Old imageurl from API (steamcdn-a.akamaihd.net format)
+ * Build working Steam CDN image URL using item metadata
+ * @param {string} oldImageUrl - Old imageurl from API (not used, kept for compatibility)
  * @param {number} defindex - Weapon definition index
  * @param {number} paintindex - Paint/skin index
  * @returns {Array<string>} Array of image URLs to try in order
@@ -497,19 +497,10 @@ async function fetchFloatData(inspectLink) {
 function buildImageUrl(oldImageUrl, defindex, paintindex) {
   const urls = [];
 
-  // Option 1: Transform old API URL to modern CDN domains
-  if (oldImageUrl) {
-    const urlMatch = oldImageUrl.match(/https?:\/\/[^\/]+\/(.*)/);
-    if (urlMatch) {
-      const path = urlMatch[1];
-
-      // Try modern CDN endpoints in priority order
-      urls.push(`https://community.cloudflare.steamstatic.com/${path}`);
-      urls.push(`https://steamcommunity-a.akamaihd.net/${path}`);
-
-      // Also try the old URL as-is (might still work)
-      urls.push(oldImageUrl);
-    }
+  // Option 1: Use Steam's economy/image API with defindex/paintindex (most reliable)
+  if (defindex && paintindex) {
+    urls.push(`https://community.akamai.steamstatic.com/economy/image/class/730/${defindex}/${paintindex}`);
+    urls.push(`https://community.cloudflare.steamstatic.com/economy/image/class/730/${defindex}/${paintindex}`);
   }
 
   // Option 2: Generic CS2 placeholder (always works as fallback)
