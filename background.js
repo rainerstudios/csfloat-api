@@ -499,23 +499,21 @@ function buildImageUrl(oldImageUrl, defindex, paintindex) {
 
   // Option 1: Transform old API URL to modern CDN domains
   if (oldImageUrl) {
-    // Extract path after domain
-    // Old: https://steamcdn-a.akamaihd.net/apps/730/icons/econ/...
-    // New: https://community.akamai.steamstatic.com/apps/730/icons/econ/...
     const urlMatch = oldImageUrl.match(/https?:\/\/[^\/]+\/(.*)/);
     if (urlMatch) {
       const path = urlMatch[1];
 
-      // Try multiple modern CDN endpoints
-      urls.push(`https://community.akamai.steamstatic.com/${path}`);
+      // Try modern CDN endpoints in priority order
       urls.push(`https://community.cloudflare.steamstatic.com/${path}`);
       urls.push(`https://steamcommunity-a.akamaihd.net/${path}`);
+
+      // Also try the old URL as-is (might still work)
+      urls.push(oldImageUrl);
     }
   }
 
-  // Option 2: Fallback to generic weapon image (last resort)
-  const weaponCodename = getWeaponCodename(defindex);
-  urls.push(`https://community.akamai.steamstatic.com/economy/image/fWFc82js0fmoRAP-qOIPu5THSWqfSmTELLqcUywGkijVjZYMUrsm1j-9xgEObwgfEh_nvjlWhNzZCveCDfIBj98xqodQ2CZknz5-OOqhNQhvKzvCEKJKV8o14YTbTyYh_ZFXBq9hpj5T-7TjpOCPJ7klTtFMGpjUDKeAYgCp40hog6RaKUKKqy3qiSy6azqEDEi5q2wChKfMm_dHag/330fx248f`);
+  // Option 2: Generic CS2 placeholder (always works as fallback)
+  urls.push('https://community.cloudflare.steamstatic.com/economy/image/fWFc82js0fmoRAP-qOIPu5THSWqfSmTELLqcUywGkijVjZYMUrsm1j-9xgEAaR4uURrwvz0N252yVaDVWrRTno9m4ccG2GNqxlQoZrC2aG9hcVGUWflbX_drrVu5UGki5sAij6tOtQ/360fx360f');
 
   return urls;
 }
