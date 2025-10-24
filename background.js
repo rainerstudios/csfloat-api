@@ -488,22 +488,22 @@ async function fetchFloatData(inspectLink) {
 }
 
 /**
- * Build working Steam CDN image URL using item metadata
- * @param {string} oldImageUrl - Old imageurl from API (not used, kept for compatibility)
- * @param {number} defindex - Weapon definition index
- * @param {number} paintindex - Paint/skin index
+ * Build image URL array with fallback
+ * API now returns working URLs from CSGO-API database (2,013 skins)
+ * @param {string} apiImageUrl - Working imageurl from API
+ * @param {number} defindex - Weapon definition index (unused, kept for compatibility)
+ * @param {number} paintindex - Paint/skin index (unused, kept for compatibility)
  * @returns {Array<string>} Array of image URLs to try in order
  */
-function buildImageUrl(oldImageUrl, defindex, paintindex) {
+function buildImageUrl(apiImageUrl, defindex, paintindex) {
   const urls = [];
 
-  // Option 1: Use Steam's economy/image API with defindex/paintindex (most reliable)
-  if (defindex && paintindex) {
-    urls.push(`https://community.akamai.steamstatic.com/economy/image/class/730/${defindex}/${paintindex}`);
-    urls.push(`https://community.cloudflare.steamstatic.com/economy/image/class/730/${defindex}/${paintindex}`);
+  // API now returns working URLs from CSGO-API integration
+  if (apiImageUrl) {
+    urls.push(apiImageUrl);
   }
 
-  // Option 2: Generic CS2 placeholder (always works as fallback)
+  // Generic CS2 placeholder as fallback
   urls.push('https://community.cloudflare.steamstatic.com/economy/image/fWFc82js0fmoRAP-qOIPu5THSWqfSmTELLqcUywGkijVjZYMUrsm1j-9xgEAaR4uURrwvz0N252yVaDVWrRTno9m4ccG2GNqxlQoZrC2aG9hcVGUWflbX_drrVu5UGki5sAij6tOtQ/360fx360f');
 
   return urls;
