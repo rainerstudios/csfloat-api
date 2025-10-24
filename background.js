@@ -488,22 +488,34 @@ async function fetchFloatData(inspectLink) {
 }
 
 /**
- * Build working Steam CDN image URL from defindex and paintindex
+ * Build working Steam CDN image URL by transforming old API URLs
+ * @param {string} oldImageUrl - Old imageurl from API (steamcdn-a.akamaihd.net format)
+ * @param {number} defindex - Weapon definition index
+ * @param {number} paintindex - Paint/skin index
+ * @returns {Array<string>} Array of image URLs to try in order
  */
-function buildImageUrl(defindex, paintindex, assetid) {
-  // Build multiple URL options (in priority order)
+function buildImageUrl(oldImageUrl, defindex, paintindex) {
   const urls = [];
 
-  // Option 1: Modern Steam Community CDN (most reliable)
-  if (assetid) {
-    urls.push(`https://community.akamai.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpou-6kejhz2v_Nfz5H_uO1gb-Gw_alDLPIhm5D18d0i_r--Y3nj1H6qUc-fWD0Z9fNdw%20${assetid}`);
+  // Option 1: Transform old API URL to modern CDN domains
+  if (oldImageUrl) {
+    // Extract path after domain
+    // Old: https://steamcdn-a.akamaihd.net/apps/730/icons/econ/...
+    // New: https://community.akamai.steamstatic.com/apps/730/icons/econ/...
+    const urlMatch = oldImageUrl.match(/https?:\/\/[^\/]+\/(.*)/);
+    if (urlMatch) {
+      const path = urlMatch[1];
+
+      // Try multiple modern CDN endpoints
+      urls.push(`https://community.akamai.steamstatic.com/${path}`);
+      urls.push(`https://community.cloudflare.steamstatic.com/${path}`);
+      urls.push(`https://steamcommunity-a.akamaihd.net/${path}`);
+    }
   }
 
-  // Option 2: Static Steam Community image endpoint
-  urls.push(`https://community.cloudflare.steamstatic.com/economy/image/class/730/${defindex}_${paintindex}`);
-
-  // Option 3: Fallback to generic weapon image
-  urls.push(`https://steamcdn-a.akamaihd.net/apps/730/icons/econ/weapons/base_weapons/weapon_${getWeaponCodename(defindex)}.png`);
+  // Option 2: Fallback to generic weapon image (last resort)
+  const weaponCodename = getWeaponCodename(defindex);
+  urls.push(`https://community.akamai.steamstatic.com/economy/image/fWFc82js0fmoRAP-qOIPu5THSWqfSmTELLqcUywGkijVjZYMUrsm1j-9xgEObwgfEh_nvjlWhNzZCveCDfIBj98xqodQ2CZknz5-OOqhNQhvKzvCEKJKV8o14YTbTyYh_ZFXBq9hpj5T-7TjpOCPJ7klTtFMGpjUDKeAYgCp40hog6RaKUKKqy3qiSy6azqEDEi5q2wChKfMm_dHag/330fx248f`);
 
   return urls;
 }
@@ -558,8 +570,8 @@ async function processFloatRequest(inspectLink, precision = 4) {
   // Get fade percentage for fade knives
   const fadePercentage = getFadePercentage(rawData.weapon_type, rawData.item_name, rawData.paintseed, rawData.full_item_name);
 
-  // Build working image URLs (API returns old CDN that 404s)
-  const imageUrls = buildImageUrl(rawData.defindex, rawData.paintindex, rawData.a);
+  // Build working image URLs (API returns old CDN that 404s - transform to modern CDNs)
+  const imageUrls = buildImageUrl(rawData.imageurl, rawData.defindex, rawData.paintindex);
 
   // Create enhanced data using CSGOFloat API fields
   const enhancedData = {
