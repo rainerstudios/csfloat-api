@@ -488,33 +488,78 @@ async function fetchFloatData(inspectLink) {
 }
 
 /**
+ * Build working Steam CDN image URL from defindex and paintindex
+ */
+function buildImageUrl(defindex, paintindex, assetid) {
+  // Build multiple URL options (in priority order)
+  const urls = [];
+
+  // Option 1: Modern Steam Community CDN (most reliable)
+  if (assetid) {
+    urls.push(`https://community.akamai.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpou-6kejhz2v_Nfz5H_uO1gb-Gw_alDLPIhm5D18d0i_r--Y3nj1H6qUc-fWD0Z9fNdw%20${assetid}`);
+  }
+
+  // Option 2: Static Steam Community image endpoint
+  urls.push(`https://community.cloudflare.steamstatic.com/economy/image/class/730/${defindex}_${paintindex}`);
+
+  // Option 3: Fallback to generic weapon image
+  urls.push(`https://steamcdn-a.akamaihd.net/apps/730/icons/econ/weapons/base_weapons/weapon_${getWeaponCodename(defindex)}.png`);
+
+  return urls;
+}
+
+/**
+ * Get weapon codename for image URLs
+ */
+function getWeaponCodename(defindex) {
+  const codenames = {
+    1: 'deagle',
+    2: 'elite',
+    3: 'fiveseven',
+    4: 'glock',
+    7: 'ak47',
+    8: 'aug',
+    9: 'awp',
+    10: 'famas',
+    16: 'm4a1',
+    17: 'mac10',
+    60: 'm4a1_silencer',
+    61: 'usp_silencer'
+  };
+  return codenames[defindex] || 'unknown';
+}
+
+/**
  * Process enhanced float request
  */
 async function processFloatRequest(inspectLink, precision = 4) {
   // Check cache
   const cacheKey = inspectLink;
   const cached = cache.get(cacheKey);
-  
+
   if (cached && Date.now() - cached.timestamp < CACHE_EXPIRY) {
     console.log('Returning cached enhanced data');
     return cached.data;
   }
-  
+
   // Fetch from API
   const rawData = await fetchFloatData(inspectLink);
   if (!rawData) return null;
-  
+
   // Blue gem analysis not available without proper API support
   const blueGemInfo = null;
-  
+
   // Calculate float percentile (mock)
   const floatPercentile = 50 + Math.random() * 40; // Mock percentile
-  
+
   // Get Doppler phase if applicable
   const dopplerPhase = getDopplerPhase(rawData.paintindex);
 
   // Get fade percentage for fade knives
   const fadePercentage = getFadePercentage(rawData.weapon_type, rawData.item_name, rawData.paintseed, rawData.full_item_name);
+
+  // Build working image URLs (API returns old CDN that 404s)
+  const imageUrls = buildImageUrl(rawData.defindex, rawData.paintindex, rawData.a);
 
   // Create enhanced data using CSGOFloat API fields
   const enhancedData = {
@@ -531,7 +576,8 @@ async function processFloatRequest(inspectLink, precision = 4) {
     statTrakKills: rawData.killeatervalue,
     customName: rawData.customname,
     origin: rawData.origin_name,
-    imageUrl: rawData.imageurl,
+    imageUrl: imageUrls[0], // Primary URL
+    imageUrls: imageUrls, // All fallback URLs
     dopplerPhase: dopplerPhase,
     fadePercentage: fadePercentage,
     floatPercentile: floatPercentile, // TODO: Remove this fake data
