@@ -233,6 +233,337 @@ app.get('/stats', (req, res) => {
     });
 });
 
+// BATCH PROCESSING ENDPOINTS
+
+// Batch Price Comparison - Check prices for multiple items at once
+app.post('/api/batch/prices', async (req, res) => {
+    try {
+        const { items } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                error: 'Missing or invalid items array',
+                example: { items: ['AK-47 | Redline (Field-Tested)', 'AWP | Asiimov (Field-Tested)'] }
+            });
+        }
+
+        if (items.length > 50) {
+            return res.status(400).json({
+                error: 'Maximum 50 items per batch request'
+            });
+        }
+
+        const results = [];
+        const errors = [];
+
+        // Process items in parallel (with cache)
+        const promises = items.map(async (itemName, index) => {
+            try {
+                // Check cache first
+                const cached = await postgres.getCachedPrice(itemName);
+                if (cached) {
+                    return { index, itemName, data: cached, cached: true };
+                }
+
+                // Fetch from API if not cached
+                const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+                const url = `https://skin.broker/api/v1/item?marketHashName=${encodeURIComponent(itemName)}&key=${apiKey}`;
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (!data.success) {
+                    throw new Error('Item not found');
+                }
+
+                // Transform and cache
+                const priceData = transformPriceData(data, itemName);
+                await postgres.cachePriceData(itemName, priceData);
+
+                return { index, itemName, data: priceData, cached: false };
+            } catch (error) {
+                return { index, itemName, error: error.message };
+            }
+        });
+
+        const allResults = await Promise.all(promises);
+
+        // Separate successful results from errors
+        allResults.forEach(result => {
+            if (result.error) {
+                errors.push({
+                    index: result.index,
+                    itemName: result.itemName,
+                    error: result.error
+                });
+            } else {
+                results.push({
+                    index: result.index,
+                    itemName: result.itemName,
+                    prices: result.data.prices,
+                    lowestPrice: result.data.lowestPrice,
+                    highestPrice: result.data.highestPrice,
+                    cached: result.cached
+                });
+            }
+        });
+
+        res.json({
+            success: true,
+            total: items.length,
+            successful: results.length,
+            failed: errors.length,
+            results: results,
+            errors: errors.length > 0 ? errors : undefined
+        });
+
+    } catch (e) {
+        winston.error('Error in batch price processing:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Helper function to transform price data (extracted for reuse)
+function transformPriceData(data, marketHashName) {
+    function generateMarketplaceUrl(market, itemName) {
+        const encodedName = encodeURIComponent(itemName);
+        switch(market) {
+            case 'buff163':
+                return `https://buff.163.com/market/csgo#tab=selling&page_num=1&search=${encodedName}`;
+            case 'skinport':
+                return `https://skinport.com/market?search=${encodedName}`;
+            case 'marketCsgo':
+                return `https://cs.money/csgo/trade/?search=${encodedName}`;
+            case 'csfloat':
+                return `https://csfloat.com/search?search=${encodedName}`;
+            case 'steam':
+                return `https://steamcommunity.com/market/listings/730/${encodedName}`;
+            default:
+                return null;
+        }
+    }
+
+    return {
+        success: true,
+        name: data.name,
+        prices: {
+            buff163: data.price.buff ? {
+                price_usd: data.price.buff.converted.price,
+                price_cny: data.price.buff.original.price,
+                listings: data.price.buff.count,
+                updated: new Date(data.price.buff.updated * 1000).toISOString(),
+                url: generateMarketplaceUrl('buff163', marketHashName)
+            } : null,
+            skinport: data.price.skinport ? {
+                price_usd: data.price.skinport.converted.price,
+                price_eur: data.price.skinport.original.price,
+                listings: data.price.skinport.count,
+                updated: new Date(data.price.skinport.updated * 1000).toISOString(),
+                url: generateMarketplaceUrl('skinport', marketHashName)
+            } : null,
+            marketCsgo: data.price.marketCsgo ? {
+                price_usd: data.price.marketCsgo.original.price,
+                listings: data.price.marketCsgo.count,
+                updated: new Date(data.price.marketCsgo.updated * 1000).toISOString(),
+                url: generateMarketplaceUrl('marketCsgo', marketHashName)
+            } : null,
+            csfloat: data.price.csfloat ? {
+                price_usd: data.price.csfloat.converted.price,
+                listings: data.price.csfloat.count,
+                updated: new Date(data.price.csfloat.updated * 1000).toISOString(),
+                url: generateMarketplaceUrl('csfloat', marketHashName)
+            } : null,
+            steam: data.price.steam ? {
+                price_usd: data.price.steam.converted.price,
+                volume: data.price.steam.count,
+                updated: new Date(data.price.steam.updated * 1000).toISOString(),
+                url: generateMarketplaceUrl('steam', marketHashName)
+            } : null
+        },
+        lowestPrice: Math.min(
+            ...Object.values(data.price)
+                .filter(p => p && p.converted)
+                .map(p => p.converted.price)
+        ),
+        highestPrice: Math.max(
+            ...Object.values(data.price)
+                .filter(p => p && p.converted)
+                .map(p => p.converted.price)
+        )
+    };
+}
+
+// Batch Float Rarity - Check rarity for multiple floats at once
+app.post('/api/batch/rarity', async (req, res) => {
+    try {
+        const { items } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                error: 'Missing or invalid items array',
+                example: {
+                    items: [
+                        { defindex: 7, paintindex: 279, floatvalue: 0.15 },
+                        { defindex: 9, paintindex: 344, floatvalue: 0.25 }
+                    ]
+                }
+            });
+        }
+
+        if (items.length > 100) {
+            return res.status(400).json({
+                error: 'Maximum 100 items per batch request'
+            });
+        }
+
+        const results = [];
+        const errors = [];
+
+        // Process all items in parallel (database queries are fast)
+        const promises = items.map(async (item, index) => {
+            try {
+                const { defindex, paintindex, floatvalue } = item;
+
+                if (!defindex || !paintindex || floatvalue === undefined) {
+                    throw new Error('Missing required fields: defindex, paintindex, floatvalue');
+                }
+
+                const rarityData = await postgres.getFloatRarity(
+                    parseInt(defindex),
+                    parseInt(paintindex),
+                    parseFloat(floatvalue)
+                );
+
+                return { index, item, data: rarityData };
+            } catch (error) {
+                return { index, item, error: error.message };
+            }
+        });
+
+        const allResults = await Promise.all(promises);
+
+        // Separate successful results from errors
+        allResults.forEach(result => {
+            if (result.error) {
+                errors.push({
+                    index: result.index,
+                    item: result.item,
+                    error: result.error
+                });
+            } else {
+                results.push({
+                    index: result.index,
+                    item: result.item,
+                    rarity: result.data
+                });
+            }
+        });
+
+        res.json({
+            success: true,
+            total: items.length,
+            successful: results.length,
+            failed: errors.length,
+            results: results,
+            errors: errors.length > 0 ? errors : undefined
+        });
+
+    } catch (e) {
+        winston.error('Error in batch rarity processing:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Batch Float Premium - Calculate premium for multiple items at once
+app.post('/api/batch/float-premium', async (req, res) => {
+    try {
+        const { items } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                error: 'Missing or invalid items array',
+                example: {
+                    items: [
+                        { marketHashName: 'AK-47 | Redline (Field-Tested)', floatValue: 0.18 },
+                        { marketHashName: 'AWP | Asiimov (Field-Tested)', floatValue: 0.25 }
+                    ]
+                }
+            });
+        }
+
+        if (items.length > 50) {
+            return res.status(400).json({
+                error: 'Maximum 50 items per batch request'
+            });
+        }
+
+        const results = [];
+        const errors = [];
+
+        const promises = items.map(async (item, index) => {
+            try {
+                const { marketHashName, floatValue } = item;
+
+                if (!marketHashName || floatValue === undefined) {
+                    throw new Error('Missing required fields: marketHashName, floatValue');
+                }
+
+                const premium = await postgres.calculateFloatPricePremium(
+                    marketHashName,
+                    parseFloat(floatValue)
+                );
+
+                return { index, item, data: premium };
+            } catch (error) {
+                return { index, item, error: error.message };
+            }
+        });
+
+        const allResults = await Promise.all(promises);
+
+        allResults.forEach(result => {
+            if (result.error) {
+                errors.push({
+                    index: result.index,
+                    item: result.item,
+                    error: result.error
+                });
+            } else {
+                results.push({
+                    index: result.index,
+                    item: result.item,
+                    premium: result.data
+                });
+            }
+        });
+
+        res.json({
+            success: true,
+            total: items.length,
+            successful: results.length,
+            failed: errors.length,
+            results: results,
+            errors: errors.length > 0 ? errors : undefined
+        });
+
+    } catch (e) {
+        winston.error('Error in batch float premium processing:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
 // Trade Protection Tracker - Ownership History Endpoint
 app.get('/api/ownership-history/:floatId', async (req, res) => {
     try {
@@ -300,63 +631,524 @@ app.get('/api/pattern-stats/:defindex/:paintindex', async (req, res) => {
     }
 });
 
-// Buff163 Price Proxy (CORS bypass)
-app.get('/api/buff163-proxy', async (req, res) => {
+// Skin.Broker Price API - Get prices from Buff163, Skinport, and other markets
+// WITH CACHING for 300 concurrent users
+app.get('/api/price/:marketHashName', async (req, res) => {
     try {
-        const { search } = req.query;
+        const marketHashName = decodeURIComponent(req.params.marketHashName);
 
-        if (!search) {
-            return res.status(400).json({ error: 'Missing search parameter' });
+        if (!marketHashName) {
+            return res.status(400).json({ error: 'Missing market hash name' });
         }
 
-        // Note: Buff163 API requires authentication and proper headers
-        // This is a simplified proxy - you'll need to add your own Buff163 API credentials
-        const buffApiUrl = `https://buff.163.com/api/market/goods`;
-        const params = new URLSearchParams({
-            game: 'csgo',
-            page_num: 1,
-            sort_by: 'price.asc',
-            search: search
-        });
+        // Check cache first (5 minute TTL)
+        const cachedData = await postgres.getCachedPrice(marketHashName);
+        if (cachedData) {
+            winston.debug(`Price cache HIT for ${marketHashName}`);
+            return res.json(cachedData);
+        }
 
-        const response = await fetch(`${buffApiUrl}?${params.toString()}`, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/json',
-                'Accept-Language': 'en-US,en;q=0.9'
-            }
-        });
+        winston.debug(`Price cache MISS for ${marketHashName}, fetching from API`);
+
+        // Use Skin.Broker authenticated API for detailed pricing
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const url = `https://skin.broker/api/v1/item?marketHashName=${encodeURIComponent(marketHashName)}&key=${apiKey}`;
+
+        const response = await fetch(url);
 
         if (!response.ok) {
-            winston.warn(`Buff163 API returned status ${response.status}`);
-            // Return mock data if API fails
-            return res.json({
+            winston.warn(`Skin.Broker API returned status ${response.status}`);
+            return res.status(response.status).json({
                 success: false,
-                message: 'Buff163 API unavailable - showing mock data'
+                error: 'Unable to fetch pricing data'
             });
         }
 
         const data = await response.json();
 
-        // Transform Buff163 response to our format
-        const transformedData = {
+        if (!data.success) {
+            return res.json({
+                success: false,
+                error: 'Item not found'
+            });
+        }
+
+        // Helper function to generate marketplace URLs
+        function generateMarketplaceUrl(market, itemName) {
+            const encodedName = encodeURIComponent(itemName);
+
+            switch(market) {
+                case 'buff163':
+                    // Buff163 search URL
+                    return `https://buff.163.com/market/csgo#tab=selling&page_num=1&search=${encodedName}`;
+
+                case 'skinport':
+                    // Skinport uses slugified names (convert to lowercase, replace spaces/special chars)
+                    const slug = itemName
+                        .toLowerCase()
+                        .replace(/[™|]/g, '')
+                        .replace(/\s+/g, '-')
+                        .replace(/[()]/g, '');
+                    return `https://skinport.com/market?search=${encodedName}`;
+
+                case 'marketCsgo':
+                    // CS.MONEY search
+                    return `https://cs.money/csgo/trade/?search=${encodedName}`;
+
+                case 'csfloat':
+                    // CSFloat market search
+                    return `https://csfloat.com/search?search=${encodedName}`;
+
+                case 'steam':
+                    // Steam Community Market
+                    return `https://steamcommunity.com/market/listings/730/${encodedName}`;
+
+                case 'skinbaron':
+                    return `https://skinbaron.de/offers?appId=730&search=${encodedName}`;
+
+                case 'gamerpay':
+                    return `https://gamerpay.gg/en/csgo/?search=${encodedName}`;
+
+                case 'waxpeer':
+                    return `https://waxpeer.com/csgo?search=${encodedName}`;
+
+                case 'dmarket':
+                    return `https://dmarket.com/ingame-items/item-list/csgo-skins?title=${encodedName}`;
+
+                case 'shadowpay':
+                    return `https://shadowpay.com/en/csgo?search=${encodedName}`;
+
+                default:
+                    return null;
+            }
+        }
+
+        // Transform to simplified format with marketplace URLs
+        const priceData = {
             success: true,
-            items: data.data?.items?.map(item => ({
-                id: item.id,
-                market_hash_name: item.market_hash_name,
-                sell_min_price: item.sell_min_price,
-                sell_num: item.sell_num
-            })) || []
+            name: data.name,
+            prices: {
+                buff163: data.price.buff ? {
+                    price_usd: data.price.buff.converted.price,
+                    price_cny: data.price.buff.original.price,
+                    listings: data.price.buff.count,
+                    updated: new Date(data.price.buff.updated * 1000).toISOString(),
+                    url: generateMarketplaceUrl('buff163', marketHashName)
+                } : null,
+                skinport: data.price.skinport ? {
+                    price_usd: data.price.skinport.converted.price,
+                    price_eur: data.price.skinport.original.price,
+                    listings: data.price.skinport.count,
+                    updated: new Date(data.price.skinport.updated * 1000).toISOString(),
+                    url: generateMarketplaceUrl('skinport', marketHashName)
+                } : null,
+                marketCsgo: data.price.marketCsgo ? {
+                    price_usd: data.price.marketCsgo.original.price,
+                    listings: data.price.marketCsgo.count,
+                    updated: new Date(data.price.marketCsgo.updated * 1000).toISOString(),
+                    url: generateMarketplaceUrl('marketCsgo', marketHashName)
+                } : null,
+                csfloat: data.price.csfloat ? {
+                    price_usd: data.price.csfloat.converted.price,
+                    listings: data.price.csfloat.count,
+                    updated: new Date(data.price.csfloat.updated * 1000).toISOString(),
+                    url: generateMarketplaceUrl('csfloat', marketHashName)
+                } : null,
+                steam: data.price.steam ? {
+                    price_usd: data.price.steam.converted.price,
+                    volume: data.price.steam.count,
+                    updated: new Date(data.price.steam.updated * 1000).toISOString(),
+                    url: generateMarketplaceUrl('steam', marketHashName)
+                } : null
+            },
+            // Calculate average price and recommendations
+            lowestPrice: Math.min(
+                ...Object.values(data.price)
+                    .filter(p => p && p.converted)
+                    .map(p => p.converted.price)
+            ),
+            highestPrice: Math.max(
+                ...Object.values(data.price)
+                    .filter(p => p && p.converted)
+                    .map(p => p.converted.price)
+            ),
+            cached: false
         };
 
-        res.json(transformedData);
+        // Cache the result for 5 minutes
+        await postgres.cachePriceData(marketHashName, priceData);
+
+        res.json(priceData);
 
     } catch (e) {
-        winston.error('Error proxying Buff163 request:', e);
-        // Return mock data on error
-        res.json({
+        winston.error('Error fetching Skin.Broker pricing:', e);
+        res.status(500).json({
             success: false,
-            message: 'Buff163 proxy error - using fallback data'
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Skin.Broker HTML Widget - Quick comparison (FREE endpoint, no auth needed)
+app.get('/api/price-widget', async (req, res) => {
+    try {
+        const { marketName, currency, price } = req.query;
+
+        if (!marketName) {
+            return res.status(400).json({ error: 'Missing marketName parameter' });
+        }
+
+        // Use free extension endpoint
+        const url = new URL('https://skin.broker/api/ext');
+        url.searchParams.append('marketName', marketName);
+        url.searchParams.append('currency', currency || 'USD');
+        url.searchParams.append('price', price || '0');
+
+        const response = await fetch(url.toString());
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                error: 'Unable to fetch price widget'
+            });
+        }
+
+        const data = await response.json();
+
+        res.json({
+            success: true,
+            html: data.html,
+            marketName: marketName
+        });
+
+    } catch (e) {
+        winston.error('Error fetching Skin.Broker widget:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Skin.Broker - Price History Chart (7/14/30 days)
+app.get('/api/price-history/:marketHashName', async (req, res) => {
+    try {
+        const marketHashName = decodeURIComponent(req.params.marketHashName);
+        const timeframe = req.query.timeframe || '30'; // 7, 14, or 30 days
+
+        if (!['7', '14', '30'].includes(timeframe)) {
+            return res.status(400).json({ error: 'Invalid timeframe. Use 7, 14, or 30' });
+        }
+
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const url = `https://skin.broker/api/v2/item/chart?marketHashName=${encodeURIComponent(marketHashName)}&timeframe=${timeframe}&key=${apiKey}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                error: 'Unable to fetch price history'
+            });
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+            return res.json({
+                success: false,
+                error: 'No price history available'
+            });
+        }
+
+        // Transform chart data for easier frontend use
+        const chartData = {
+            success: true,
+            name: marketHashName,
+            timeframe: `${timeframe} days`,
+            markets: data.data.map(market => ({
+                name: market.name,
+                type: market.type,
+                prices: market.data.map(point => ({
+                    date: new Date(point.x).toISOString(),
+                    price: point.y,
+                    quantity: point.q
+                }))
+            }))
+        };
+
+        res.json(chartData);
+
+    } catch (e) {
+        winston.error('Error fetching price history:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Skin.Broker - Recent Sales Data (WITH DATABASE STORAGE)
+app.get('/api/recent-sales/:marketHashName', async (req, res) => {
+    try {
+        const marketHashName = decodeURIComponent(req.params.marketHashName);
+
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const url = `https://skin.broker/api/v1/item/sales?marketHashName=${encodeURIComponent(marketHashName)}&key=${apiKey}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                error: 'Unable to fetch sales data'
+            });
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+            return res.json({
+                success: true,
+                sales: [],
+                message: 'No recent sales data available'
+            });
+        }
+
+        // Store sales in database for float-price correlation
+        for (const sale of data) {
+            try {
+                await postgres.storeRecentSale(marketHashName, {
+                    price: sale.price,
+                    float: sale.float,
+                    pattern: sale.pattern,
+                    stickers: sale.stickers,
+                    date: sale.time,
+                    market: sale.market.name
+                });
+            } catch (e) {
+                winston.warn(`Failed to store sale for ${marketHashName}:`, e.message);
+            }
+        }
+
+        // Transform sales data
+        const salesData = {
+            success: true,
+            name: marketHashName,
+            totalSales: data.length,
+            sales: data.map(sale => ({
+                price: parseFloat(sale.price),
+                float: sale.float ? parseFloat(sale.float) : null,
+                pattern: sale.pattern,
+                stickers: sale.stickers || [],
+                date: sale.time,
+                market: {
+                    name: sale.market.name,
+                    url: sale.market.url
+                }
+            })),
+            // Calculate average sale price
+            averagePrice: (data.reduce((sum, sale) => sum + parseFloat(sale.price), 0) / data.length).toFixed(2)
+        };
+
+        res.json(salesData);
+
+    } catch (e) {
+        winston.error('Error fetching recent sales:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// UNIQUE FEATURE: Float Price Premium Calculator
+// Calculate how much a specific float affects price
+app.get('/api/float-price-premium/:marketHashName/:floatValue', async (req, res) => {
+    try {
+        const marketHashName = decodeURIComponent(req.params.marketHashName);
+        const floatValue = parseFloat(req.params.floatValue);
+
+        if (!marketHashName || isNaN(floatValue)) {
+            return res.status(400).json({ error: 'Invalid parameters' });
+        }
+
+        // Calculate premium from database
+        const premium = await postgres.calculateFloatPricePremium(marketHashName, floatValue);
+
+        if (!premium.success) {
+            return res.json({
+                success: false,
+                message: premium.message,
+                recommendation: 'Check this item again later as more sales data is collected'
+            });
+        }
+
+        // Add recommendation based on premium
+        let recommendation = '';
+        let dealQuality = 'fair';
+        const premiumPercent = parseFloat(premium.premiumPercent);
+
+        if (premiumPercent > 10) {
+            recommendation = '🔥 Your float commands a significant premium! Price above market average.';
+            dealQuality = 'premium';
+        } else if (premiumPercent > 5) {
+            recommendation = '💰 Your float is above average. Price slightly higher expected.';
+            dealQuality = 'good';
+        } else if (premiumPercent > -5) {
+            recommendation = '📊 Standard float. Market average price expected.';
+            dealQuality = 'fair';
+        } else if (premiumPercent > -10) {
+            recommendation = '💡 Below average float. Price slightly lower expected.';
+            dealQuality = 'discount';
+        } else {
+            recommendation = '⚠️ Low float quality. Price significantly below average.';
+            dealQuality = 'low';
+        }
+
+        res.json({
+            success: true,
+            itemName: marketHashName,
+            floatAnalysis: {
+                yourFloat: premium.yourFloat,
+                estimatedPrice: `$${premium.estimatedPrice}`,
+                marketAverage: `$${premium.marketAverage}`,
+                premiumPercent: `${premiumPercent > 0 ? '+' : ''}${premium.premiumPercent}%`,
+                priceRange: {
+                    min: `$${premium.priceRange.min}`,
+                    max: `$${premium.priceRange.max}`
+                }
+            },
+            dataQuality: {
+                sampleSize: premium.sampleSize,
+                totalSales: premium.totalSales,
+                reliability: premium.sampleSize > 5 ? 'high' : premium.sampleSize > 2 ? 'medium' : 'low'
+            },
+            recommendation: recommendation,
+            dealQuality: dealQuality
+        });
+
+    } catch (e) {
+        winston.error('Error calculating float premium:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Skin.Broker - Market Statistics
+app.get('/api/market-stats', async (req, res) => {
+    try {
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const url = `https://skin.broker/api/v1/market/metrics?key=${apiKey}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                error: 'Unable to fetch market statistics'
+            });
+        }
+
+        const data = await response.json();
+
+        // Sort markets by value
+        const sortedMarkets = data.markets.sort((a, b) => b.marketValue - a.marketValue);
+
+        const stats = {
+            success: true,
+            timestamp: new Date().toISOString(),
+            global: {
+                totalMarketValue: data.total.totalMarketValue,
+                totalMarketValueFormatted: `$${(data.total.totalMarketValue / 1000000).toFixed(1)}M`,
+                totalItems: data.total.totalItemCount,
+                totalItemsFormatted: `${(data.total.totalItemCount / 1000000).toFixed(1)}M`,
+                totalMarkets: data.markets.length
+            },
+            topMarkets: sortedMarkets.slice(0, 10).map(market => ({
+                name: market.market,
+                items: market.items,
+                marketValue: market.marketValue,
+                marketValueFormatted: `$${(market.marketValue / 1000000).toFixed(2)}M`,
+                averagePrice: (market.marketValue / market.items).toFixed(2)
+            })),
+            allMarkets: sortedMarkets.map(market => ({
+                name: market.market,
+                items: market.items,
+                marketValue: market.marketValue
+            }))
+        };
+
+        res.json(stats);
+
+    } catch (e) {
+        winston.error('Error fetching market stats:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+});
+
+// Skin.Broker - Get User Inventory Value
+app.get('/api/inventory/:steamId', async (req, res) => {
+    try {
+        const steamId = req.params.steamId;
+
+        if (!steamId || steamId.length < 17) {
+            return res.status(400).json({ error: 'Invalid Steam ID' });
+        }
+
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const url = `https://skin.broker/api/v2/inventory?steamId=${steamId}&key=${apiKey}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                error: 'Unable to fetch inventory'
+            });
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+            return res.json({
+                success: false,
+                error: 'Inventory not found or private'
+            });
+        }
+
+        // Calculate total value and sort items by value
+        const sortedItems = data.items.sort((a, b) => b.value - a.value);
+
+        const inventoryData = {
+            success: true,
+            steamId: data.steamId,
+            totalItems: data.items.length,
+            totalValue: data.totalValue,
+            totalValueFormatted: `$${data.totalValue.toFixed(2)}`,
+            cacheTimestamp: data.timestamp,
+            topItems: sortedItems.slice(0, 20).map(item => ({
+                name: item.name,
+                value: item.value,
+                marketHashName: item.marketHashName,
+                icon: item.icon
+            })),
+            // All items available if needed
+            allItemsCount: data.items.length
+        };
+
+        res.json(inventoryData);
+
+    } catch (e) {
+        winston.error('Error fetching inventory:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
         });
     }
 });
@@ -372,7 +1164,7 @@ function calculateTradeRisk(history) {
     }
 
     const latestTrade = history[0];
-    const tradeDate = new Date(latestTrade.created_at);
+    const tradeDate = new Date(latestTrade.date);
     const now = new Date();
     const daysSinceLastTrade = (now - tradeDate) / (1000 * 60 * 60 * 24);
 

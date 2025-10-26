@@ -1,0 +1,84 @@
+module.exports = {
+    // Configuration for the HTTP API server
+    'http': {
+        'port': 3002
+    },
+    // Whether to trust a forwarding proxy's IP (trust X-Forwarded-For)
+    'trust_proxy': true,
+    // List of usernames and passwords for the Steam accounts
+    'logins': [
+        {
+            'user': 'xgamingserver3',
+            'pass': '7U33,5mL5iU9(Bd'
+        },
+        {
+            'user': 'xgamingserver1',
+            'pass': '+8Bpv_fhgBjxZwm'
+        },
+        {
+            'user': 'johnsonk01',
+            'pass': 'ChAng3M3'
+        }
+    ],
+    // Optional HTTP/SOCKS5 proxies to auto-rotate for each bot in a round-robin
+    // Bot assignment: bot[0]=proxy[0], bot[1]=proxy[1], bot[2]=proxy[2], etc.
+    'proxies': [
+        'http://pjukyfij:3q9caatdky72@31.59.20.176:6754/',          // Bot 0 (xgamingserver3) ✅
+        'http://pjukyfij:3q9caatdky72@45.38.107.97:6014/',          // Bot 1 (xgamingserver1) - SWAPPED to working proxy
+        'http://pjukyfij:3q9caatdky72@198.23.239.134:6540/',        // Bot 2 (johnsonk01) ✅
+        'http://pjukyfij:3q9caatdky72@38.170.176.177:5572/',        // MOVED - was timing out
+        'http://pjukyfij:3q9caatdky72@107.172.163.27:6543/',        // Backup proxy 5
+        'http://pjukyfij:3q9caatdky72@64.137.96.74:6641/',          // Backup proxy 6
+        'http://pjukyfij:3q9caatdky72@216.10.27.159:6837/',         // Backup proxy 7
+        'http://pjukyfij:3q9caatdky72@142.111.67.146:5611/',        // Backup proxy 8
+        'http://pjukyfij:3q9caatdky72@142.147.128.93:6593/'         // Backup proxy 9
+        // Note: proxy 142.111.48.253:7030 excluded - was timing out
+    ],
+    // Bot settings
+    'bot_settings': {
+        // Amount of attempts for each request to Valve (increased for better resilience)
+        'max_attempts': 3,
+        // Amount of milliseconds to wait between subsequent requests to Valve (per bot)
+        'request_delay': 1100,
+        // Amount of milliseconds to wait until a request to Valve is timed out (increased for proxy latency)
+        'request_ttl': 8000,
+        // OPTIONAL: Settings for Steam User (https://github.com/DoctorMcKay/node-steam-user#options-)
+        'steam_user': {}
+    },
+    // Origins allowed to connect to the HTTP/HTTPS API
+    'allowed_origins': [
+        'https://cs2floatchecker.com',
+        'https://steamcommunity.com',
+        'http://localhost:3000',
+        'https://api.cs2floatchecker.com'
+    ],
+    // Origins allowed to connect to the HTTP/HTTPS API with Regex
+    'allowed_regex_origins': [
+        'https://.*\\.steamcommunity\\.com',
+        'https://.*\\.vercel\\.app'
+    ],
+    // Optionally configure a global rate limit across all endpoints
+    'rate_limit': {
+        'enable': false,
+        'window_ms': 60 * 60 * 1000, // 60 min
+        'max': 10000
+    },
+    // Logging Level (error, warn, info, verbose, debug, silly)
+    'logLevel': 'info',
+    // Max amount of simultaneous requests from the same IP  (incl. WS and HTTP/HTTPS), -1 for unlimited
+    'max_simultaneous_requests': 50,
+    // Bool to enable game file updates from the SteamDB Github tracker (updated item definitions, images, names)
+    'enable_game_file_updates': true,
+    // Amount of seconds to wait between updating game files (0 = No Interval Updates)
+    'game_files_update_interval': 3600,
+    // Postgres connection string to store results in (ex. postgres://user:pass@127.0.0.1:5432/postgres?sslmode=disable)
+    'database_url': 'postgresql://cs2user:cs2pass123@127.0.0.1:5432/cs2floatapi?sslmode=disable',
+    // OPTIONAL: Enable bulk inserts, may improve performance with many requests (OPTIMIZED: now enabled)
+    'enable_bulk_inserts': true,
+    // OPTIONAL: Key by the caller to allow inserting price information, required to use the feature
+    'price_key': '',
+    // OPTIONAL: Key by the caller to allow placing bulk searches
+    'bulk_key': '',
+    // OPTIONAL: Maximum queue size allowed before dropping requests (OPTIMIZED: added protection)
+    'max_queue_size': 100,
+};
