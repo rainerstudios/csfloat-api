@@ -1,6 +1,6 @@
 # CS2 Float Checker - Complete API Documentation
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Base URL:** `http://localhost:3002` (Production: `https://api.cs2floatchecker.com`)
 **Last Updated:** October 30, 2025
 
@@ -27,10 +27,14 @@ Complete API documentation for the CS2 Float Checker system, covering:
 7. [Portfolio Analytics](#portfolio-analytics-endpoints)
 8. [Investment Scoring](#investment-scoring-endpoints)
 
+### Steam Integration
+9. [Steam Authentication](#steam-authentication-endpoints)
+10. [Steam Inventory](#steam-inventory-endpoints)
+
 ### Reference
-9. [Authentication](#authentication)
-10. [Error Handling](#error-handling)
-11. [Data Models](#data-models)
+11. [Authentication](#authentication)
+12. [Error Handling](#error-handling)
+13. [Data Models](#data-models)
 
 ---
 
@@ -3192,7 +3196,404 @@ Get prices for an item from all marketplaces.
 
 ---
 
+
+
 ## Rate Limiting
+
+## Steam Authentication Endpoints
+
+### Initiate Steam Login
+
+Start the Steam OpenID authentication flow.
+
+**Endpoint:** `GET /auth/steam`
+
+**Description:** Redirects user to Steam login page. After authentication, Steam redirects back to `/auth/steam/return`.
+
+**Usage:**
+```javascript
+// Redirect user to Steam login
+window.location.href = 'http://localhost:3002/auth/steam';
+```
+
+**Response:** HTTP 302 redirect to Steam Community
+
+---
+
+### Steam Login Callback
+
+Handle Steam authentication callback and generate JWT token.
+
+**Endpoint:** `GET /auth/steam/return`
+
+**Description:** Steam redirects here after successful authentication. Creates or updates user in database and redirects to frontend with JWT token.
+
+**Response:** HTTP 302 redirect to frontend
+```
+http://localhost:3000/auth/callback?token=eyJhbGci...
+```
+
+**Token Contents:**
+```json
+{
+  "steam_id": "76561198012345678",
+  "username": "PlayerName",
+  "avatar": "https://avatars.steamstatic.com/..."
+}
+```
+
+---
+
+### Get Current User
+
+Get authenticated user's information.
+
+**Endpoint:** `GET /auth/me`
+
+**Authentication:** Required (JWT token)
+
+**Headers:**
+```
+Authorization: Bearer eyJhbGci...
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "user": {
+    "steam_id": "76561198012345678",
+    "username": "PlayerName",
+    "avatar": "https://avatars.steamstatic.com/abc123_full.jpg",
+    "profile_url": "https://steamcommunity.com/id/playername",
+    "api_key": "cs2float_a1b2c3d4e5f6...",
+    "created_at": "2025-10-30T16:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Verify JWT Token
+
+Check if a JWT token is valid.
+
+**Endpoint:** `POST /auth/verify`
+
+**Request Body:**
+```json
+{
+  "token": "eyJhbGci..."
+}
+```
+
+**Response (Valid Token):**
+```json
+{
+  "success": true,
+  "valid": true,
+  "user": {
+    "steam_id": "76561198012345678",
+    "username": "PlayerName",
+    "avatar": "https://avatars.steamstatic.com/..."
+  }
+}
+```
+
+**Response (Invalid Token):**
+```json
+{
+  "success": true,
+  "valid": false
+}
+```
+
+---
+
+### Logout
+
+Logout user and clear session.
+
+**Endpoint:** `GET /auth/logout`
+
+**Response:** HTTP 302 redirect to frontend homepage
+
+---
+
+## Steam Inventory Endpoints
+
+### Get User's CS2 Inventory
+
+Fetch user's CS2 inventory from Steam Community API.
+
+**Endpoint:** `GET /api/steam/inventory/:steamId`
+
+**Authentication:** Required (JWT token)
+
+**Parameters:**
+- `steamId` - Steam ID64 format
+
+**Authorization:** Users can only access their own inventory
+
+**Response:**
+```json
+{
+  "success": true,
+  "total_items": 47,
+  "items": [
+    {
+      "asset_id": "29195031916",
+      "name": "AK-47 | Redline (Field-Tested)",
+      "name_color": "D2D2D2",
+      "type": "Rifle",
+      "rarity": "Classified",
+      "rarity_color": "D32CE6",
+      "exterior": "Field-Tested",
+      "weapon_type": "Rifle",
+      "category": "Normal",
+      "quality": "Normal",
+      "image_url": "https://community.cloudflare.steamstatic.com/economy/image/...",
+      "image_large": "https://community.cloudflare.steamstatic.com/economy/image/...",
+      "marketable": true,
+      "tradable": true,
+      "commodity": false,
+      "market_hash_name": "AK-47 | Redline (Field-Tested)",
+      "is_stattrak": false,
+      "is_souvenir": false,
+      "inspect_link": "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198084749120A29195031916D16747013944935990643",
+      "inspect_params": {
+        "s": "76561198084749120",
+        "a": "29195031916",
+        "d": "16747013944935990643"
+      }
+    }
+  ]
+}
+```
+
+**Error Response (Private Inventory):**
+```json
+{
+  "success": false,
+  "error": "Inventory is private",
+  "message": "Please set your Steam inventory to public in privacy settings"
+}
+```
+
+---
+
+### Get Inventory Value
+
+Calculate total value of user's CS2 inventory.
+
+**Endpoint:** `GET /api/steam/inventory/:steamId/value`
+
+**Authentication:** Required (JWT token)
+
+**Parameters:**
+- `steamId` - Steam ID64 format
+
+**Response:**
+```json
+{
+  "success": true,
+  "total_items": 47,
+  "valued_items": 35,
+  "total_value": 1245.75,
+  "average_item_value": 35.59,
+  "top_items": [
+    {
+      "name": "AK-47 | Redline (Field-Tested)",
+      "market_hash_name": "AK-47 | Redline (Field-Tested)",
+      "price": 52.30,
+      "image": "https://community.cloudflare.steamstatic.com/economy/image/..."
+    },
+    {
+      "name": "AWP | Asiimov (Field-Tested)",
+      "market_hash_name": "AWP | Asiimov (Field-Tested)",
+      "price": 98.75,
+      "image": "https://community.cloudflare.steamstatic.com/economy/image/..."
+    }
+  ]
+}
+```
+
+**Notes:**
+- Only marketable items with cached prices are valued
+- `valued_items` may be less than `total_items`
+- Prices come from existing price cache
+
+---
+
+### Sync Inventory to Portfolio
+
+Import items from Steam inventory into portfolio.
+
+**Endpoint:** `POST /api/steam/inventory/sync`
+
+**Authentication:** Required (JWT token)
+
+**Request Body:**
+```json
+{
+  "selected_items": ["29195031916", "29195031917"]
+}
+```
+
+**Parameters:**
+- `selected_items` (optional) - Array of asset IDs to import. If empty, imports all marketable items.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Synced 35 items from Steam inventory",
+  "added": 35,
+  "total_items": 47,
+  "errors": [
+    {
+      "item": "Sticker | Complexity Gaming",
+      "error": "Item already exists in portfolio"
+    }
+  ]
+}
+```
+
+**Process:**
+1. Fetches user's Steam inventory
+2. Gets current market prices for items
+3. Inserts items into `portfolio_investments` table
+4. Links to user via `user_steam_id`
+5. Sets `marketplace` to "Steam"
+6. Adds note: "Imported from Steam inventory"
+
+**Error Handling:**
+- Continues on individual item errors
+- Returns list of failed items
+- Reports total successful imports
+
+---
+
+## Authentication Methods
+
+The API supports three methods of authentication:
+
+### 1. Authorization Header (Recommended)
+```javascript
+fetch('/api/steam/inventory/76561198012345678', {
+  headers: {
+    'Authorization': 'Bearer eyJhbGci...'
+  }
+});
+```
+
+### 2. Custom Header
+```javascript
+fetch('/api/steam/inventory/76561198012345678', {
+  headers: {
+    'X-Auth-Token': 'eyJhbGci...'
+  }
+});
+```
+
+### 3. Query Parameter (Not Recommended)
+```
+GET /api/steam/inventory/76561198012345678?token=eyJhbGci...
+```
+
+**Token Lifespan:** 7 days
+
+**Token Refresh:** User must re-authenticate via Steam after expiry
+
+---
+
+## Steam Authentication Flow
+
+### Complete Integration Example
+
+**1. Frontend Login Button:**
+```javascript
+function loginWithSteam() {
+  window.location.href = 'http://localhost:3002/auth/steam';
+}
+```
+
+**2. Handle Callback:**
+```javascript
+// app/auth/callback/page.tsx
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+
+  if (token) {
+    localStorage.setItem('cs2float_token', token);
+    router.push('/dashboard');
+  }
+}, []);
+```
+
+**3. Make Authenticated Requests:**
+```javascript
+async function fetchInventory(steamId) {
+  const token = localStorage.getItem('cs2float_token');
+
+  const response = await fetch(
+    `http://localhost:3002/api/steam/inventory/${steamId}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }
+  );
+
+  return response.json();
+}
+```
+
+**4. Check Authentication Status:**
+```javascript
+async function isAuthenticated() {
+  const token = localStorage.getItem('cs2float_token');
+
+  if (!token) return false;
+
+  const response = await fetch('http://localhost:3002/auth/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+
+  const data = await response.json();
+  return data.valid;
+}
+```
+
+---
+
+## Configuration
+
+### Development
+```bash
+STEAM_API_KEY=65223E8BE47C4CDFFE454434252C8012
+STEAM_RETURN_URL=http://localhost:3002/auth/steam/return
+FRONTEND_URL=http://localhost:3000
+SESSION_SECRET=cs2float-session-secret-change-in-production
+JWT_SECRET=cs2float-secret-key-change-in-production
+```
+
+### Production
+```bash
+STEAM_API_KEY=65223E8BE47C4CDFFE454434252C8012
+STEAM_RETURN_URL=https://api.cs2floatchecker.com/auth/steam/return
+FRONTEND_URL=https://cs2floatchecker.com
+SESSION_SECRET=<generate-secure-random-string>
+JWT_SECRET=<generate-secure-random-string>
+NODE_ENV=production
+```
+
+**Important:** Update Steam API settings at https://steamcommunity.com/dev/apikey with production domain
+
+---
 
 **Current Status:** No rate limiting implemented
 **Production Plan:**
@@ -3203,6 +3604,47 @@ Get prices for an item from all marketplaces.
 ---
 
 ## Changelog
+
+### Version 1.4.0 (October 30, 2025) - Steam Integration Edition
+**8 new endpoints added** (total: 58 endpoints)
+
+#### Steam OAuth Authentication (5 new endpoints)
+- ✅ Steam OpenID authentication via Passport.js
+- ✅ JWT token generation (7-day expiry)
+- ✅ User database with Steam profile data
+- ✅ Auto-generated API keys for authenticated users
+- ✅ Session management with secure cookies
+- ✅ Three authentication methods: Bearer token, X-Auth-Token header, Query parameter
+- ✅ Initiate Steam login endpoint
+- ✅ Steam callback handler
+- ✅ Get current user info
+- ✅ Verify JWT token
+- ✅ Logout endpoint
+
+#### Steam Inventory Integration (3 new endpoints)
+- ✅ Fetch CS2 inventory from Steam Community API
+- ✅ Parse inventory items (name, rarity, exterior, StatTrak)
+- ✅ Calculate inventory value with market prices
+- ✅ Sync inventory to portfolio
+- ✅ Support for private inventory detection
+- ✅ Detailed item metadata extraction
+
+#### Database Enhancements
+- New `users` table for Steam authentication
+- Added `user_steam_id` foreign key to portfolio_investments
+- Auto-generated API keys via PostgreSQL function
+- Indexes for fast user lookups
+
+#### Libraries Added
+- `/lib/steam-auth.js` - Steam authentication system (290+ lines)
+- `/lib/steam-inventory.js` - Steam inventory service (250+ lines)
+
+#### Dependencies
+- passport - Authentication middleware
+- passport-steam - Steam OpenID strategy
+- express-session - Session management
+- jsonwebtoken - JWT token generation
+
 
 ### Version 1.3.0 (October 30, 2025) - Backend Features Complete Edition
 **17 new endpoints added** (total: 50 endpoints)
