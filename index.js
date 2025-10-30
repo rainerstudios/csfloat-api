@@ -1351,7 +1351,7 @@ app.get('/api/portfolio/:userId', async (req, res) => {
         const result = await postgres.pool.query(`
             SELECT
                 pi.*,
-                COALESCE(SUM(ps.quantity), 0) as sold_quantity,
+                COALESCE(SUM(ps.quantity_sold), 0) as sold_quantity,
                 COALESCE(SUM(ps.profit_loss), 0) as realized_profit
             FROM portfolio_investments pi
             LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
@@ -1361,6 +1361,14 @@ app.get('/api/portfolio/:userId', async (req, res) => {
         `, [userId]);
 
         const investments = result.rows;
+
+        // Handle empty portfolio
+        if (investments.length === 0) {
+            return res.json({
+                success: true,
+                investments: []
+            });
+        }
 
         // Enrich with current prices
         for (const inv of investments) {
@@ -1415,7 +1423,7 @@ app.get('/api/portfolio/stats/:userId', async (req, res) => {
                 pi.purchase_price,
                 pi.quantity,
                 pi.investment_score,
-                COALESCE(SUM(ps.quantity), 0) as sold_quantity,
+                COALESCE(SUM(ps.quantity_sold), 0) as sold_quantity,
                 COALESCE(SUM(ps.profit_loss), 0) as realized_profit
             FROM portfolio_investments pi
             LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
@@ -1424,6 +1432,23 @@ app.get('/api/portfolio/stats/:userId', async (req, res) => {
         `, [userId]);
 
         const investments = result.rows;
+
+        // Handle empty portfolio
+        if (investments.length === 0) {
+            return res.json({
+                success: true,
+                stats: {
+                    totalInvested: 0,
+                    currentValue: 0,
+                    realizedProfit: 0,
+                    unrealizedProfit: 0,
+                    totalProfit: 0,
+                    totalROI: 0,
+                    itemCount: 0,
+                    avgInvestmentScore: 0
+                }
+            });
+        }
 
         let totalInvested = 0;
         let currentValue = 0;
@@ -1887,7 +1912,7 @@ app.get('/api/portfolio/allocation/:userId', async (req, res) => {
                 pi.item_name,
                 pi.purchase_price,
                 pi.quantity,
-                COALESCE(SUM(ps.quantity), 0) as sold_quantity
+                COALESCE(SUM(ps.quantity_sold), 0) as sold_quantity
             FROM portfolio_investments pi
             LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
             WHERE pi.user_id = $1 AND pi.is_sold = false
@@ -1895,6 +1920,16 @@ app.get('/api/portfolio/allocation/:userId', async (req, res) => {
         `, [userId]);
 
         const investments = result.rows;
+
+        // Handle empty portfolio
+        if (investments.length === 0) {
+            return res.json({
+                success: true,
+                totalValue: 0,
+                allocation: {},
+                categories: []
+            });
+        }
 
         // Calculate asset allocation
         const allocation = {};
@@ -1957,7 +1992,7 @@ app.get('/api/portfolio/health/:userId', async (req, res) => {
         const result = await postgres.pool.query(`
             SELECT
                 pi.*,
-                COALESCE(SUM(ps.quantity), 0) as sold_quantity,
+                COALESCE(SUM(ps.quantity_sold), 0) as sold_quantity,
                 COALESCE(SUM(ps.profit_loss), 0) as realized_profit
             FROM portfolio_investments pi
             LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
@@ -1966,6 +2001,33 @@ app.get('/api/portfolio/health/:userId', async (req, res) => {
         `, [userId]);
 
         const investments = result.rows;
+
+        // Handle empty portfolio
+        if (investments.length === 0) {
+            return res.json({
+                success: true,
+                health: {
+                    overallScore: 0,
+                    diversityScore: 0,
+                    riskScore: 0,
+                    liquidityScore: 0
+                },
+                allocation: {
+                    safe: 0,
+                    risky: 0,
+                    liquid: 0,
+                    safePercentage: 0,
+                    riskyPercentage: 0,
+                    liquidPercentage: 0
+                },
+                metrics: {
+                    totalCategories: 0,
+                    totalItems: 0,
+                    totalValue: 0,
+                    totalInvested: 0
+                }
+            });
+        }
 
         // Calculate health metrics
         let totalValue = 0;
@@ -2257,7 +2319,7 @@ app.get('/api/portfolio/export/:userId', async (req, res) => {
         const result = await postgres.pool.query(`
             SELECT
                 pi.*,
-                COALESCE(SUM(ps.quantity), 0) as sold_quantity,
+                COALESCE(SUM(ps.quantity_sold), 0) as sold_quantity,
                 COALESCE(SUM(ps.profit_loss), 0) as realized_profit
             FROM portfolio_investments pi
             LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
