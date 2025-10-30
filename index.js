@@ -73,6 +73,36 @@ app.use(function (error, req, res, next) {
     else next();
 });
 
+// =====================================================================
+// STEAM AUTHENTICATION SETUP
+// =====================================================================
+const session = require('express-session');
+const passport = require('passport');
+const steamAuth = require('./lib/steam-auth');
+const steamInventory = require('./lib/steam-inventory');
+
+// Session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'cs2float-session-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        sameSite: 'lax'
+    }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Configure Steam authentication
+steamAuth.configureSteamAuth(postgres);
+winston.info('Steam authentication configured');
+
+
 
 if (CONFIG.trust_proxy === true) {
     app.enable('trust proxy');
@@ -3934,6 +3964,146 @@ function calculateTradeRisk(history) {
         lastTradeDate: tradeDate.toISOString()
     };
 }
+
+// =====================================================================
+// STEAM AUTHENTICATION ROUTES
+// =====================================================================
+steamAuth.setupAuthRoutes(app, postgres);
+winston.info('Steam authentication routes loaded');
+
+// =====================================================================
+// STEAM INVENTORY ENDPOINTS
+// =====================================================================
+
+// Get user's CS2 inventory
+app.get('/api/steam/inventory/:steamId', steamAuth.requireAuth, async (req, res) => {
+    try {
+        const { steamId } = req.params;
+        
+        // Verify user can only access their own inventory (unless admin)
+        if (req.user.steam_id !== steamId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Forbidden',
+                message: 'You can only access your own inventory'
+            });
+        }
+        
+        const result = await steamInventory.getSteamInventory(steamId);
+        res.json(result);
+    } catch (error) {
+        winston.error('Steam inventory fetch error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch inventory',
+            message: error.message
+        });
+    }
+});
+
+// Get inventory value estimate
+app.get('/api/steam/inventory/:steamId/value', steamAuth.requireAuth, async (req, res) => {
+    try {
+        const { steamId } = req.params;
+        
+        // Verify user can only access their own inventory
+        if (req.user.steam_id !== steamId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Forbidden',
+                message: 'You can only access your own inventory'
+            });
+        }
+        
+        const result = await steamInventory.getInventoryValue(steamId, postgres);
+        res.json(result);
+    } catch (error) {
+        winston.error('Inventory value calculation error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to calculate inventory value',
+            message: error.message
+        });
+    }
+});
+
+// Sync inventory to portfolio
+app.post('/api/steam/inventory/sync', steamAuth.requireAuth, async (req, res) => {
+    try {
+        const steamId = req.user.steam_id;
+        const { selected_items = [] } = req.body;
+        
+        // Get inventory
+        const inventoryResult = await steamInventory.getSteamInventory(steamId);
+        
+        if (!inventoryResult.success) {
+            return res.status(400).json(inventoryResult);
+        }
+        
+        let added = 0;
+        let errors = [];
+        
+        // Filter items to sync (either all or selected)
+        const itemsToSync = selected_items.length > 0
+            ? inventoryResult.items.filter(item => selected_items.includes(item.asset_id))
+            : inventoryResult.items;
+        
+        // Add each item to portfolio
+        for (const item of itemsToSync) {
+            try {
+                // Get market price
+                let price = 0;
+                if (item.marketable && item.market_hash_name) {
+                    const cachedPrice = await postgres.getCachedPrice(item.market_hash_name);
+                    price = cachedPrice?.price || 0;
+                }
+                
+                // Insert into portfolio
+                await postgres.pool.query(`
+                    INSERT INTO portfolio_investments (
+                        user_id, user_steam_id, item_name, purchase_price,
+                        quantity, marketplace, is_stattrak, notes
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `, [
+                    'steam_' + steamId,
+                    steamId,
+                    item.name,
+                    price,
+                    1,
+                    'Steam',
+                    item.is_stattrak || false,
+                    'Imported from Steam inventory'
+                ]);
+                
+                added++;
+            } catch (error) {
+                errors.push({
+                    item: item.name,
+                    error: error.message
+                });
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: `Synced ${added} items from Steam inventory`,
+            added: added,
+            total_items: itemsToSync.length,
+            errors: errors.length > 0 ? errors : undefined
+        });
+        
+    } catch (error) {
+        winston.error('Inventory sync error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to sync inventory',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Steam inventory endpoints loaded');
+
 
 const http_server = require('http').Server(app);
 http_server.listen(CONFIG.http.port);
