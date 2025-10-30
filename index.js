@@ -1,3 +1,5 @@
+require('dotenv').config(); // Load environment variables from .env file
+
 global._mckay_statistics_opt_out = true; // Opt out of node-steam-user stats
 
 const optionDefinitions = [
