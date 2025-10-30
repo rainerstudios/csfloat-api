@@ -3407,6 +3407,499 @@ app.patch('/api/user/settings/:userId', async (req, res) => {
 
 winston.info('Portfolio snapshots and advanced features loaded');
 
+// =====================================================================
+// AUTHENTICATION & API KEY MANAGEMENT ENDPOINTS
+// =====================================================================
+
+const auth = require('./lib/auth');
+
+// Create API key
+app.post('/api/auth/create-key', async (req, res) => {
+    try {
+        const { user_id, key_name, permissions, rate_limit, expires_in_days } = req.body;
+
+        if (!user_id) {
+            return res.status(400).json({
+                error: 'Missing user_id',
+                message: 'Provide user_id in request body'
+            });
+        }
+
+        const apiKey = auth.generateApiKey();
+        const expiresAt = expires_in_days ?
+            new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000) : null;
+
+        const result = await postgres.query(`
+            INSERT INTO api_keys (
+                user_id, api_key, key_name, permissions, rate_limit, expires_at
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, user_id, api_key, key_name, permissions, rate_limit, is_active, created_at, expires_at
+        `, [
+            user_id,
+            apiKey,
+            key_name || 'Default Key',
+            permissions || ['read', 'write'],
+            rate_limit || 1000,
+            expiresAt
+        ]);
+
+        res.json({
+            success: true,
+            message: 'API key created successfully',
+            api_key: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Create API key error:', error);
+        res.status(500).json({
+            error: 'Failed to create API key',
+            message: error.message
+        });
+    }
+});
+
+// List user's API keys
+app.get('/api/auth/keys/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const result = await postgres.query(`
+            SELECT id, user_id, key_name, permissions, rate_limit,
+                   is_active, last_used_at, created_at, expires_at,
+                   CONCAT(SUBSTRING(api_key, 1, 15), '...') as api_key_preview
+            FROM api_keys
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+        `, [userId]);
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            keys: result.rows
+        });
+    } catch (error) {
+        winston.error('List API keys error:', error);
+        res.status(500).json({
+            error: 'Failed to list API keys',
+            message: error.message
+        });
+    }
+});
+
+// Revoke API key
+app.delete('/api/auth/keys/:keyId', async (req, res) => {
+    try {
+        const { keyId } = req.params;
+
+        const result = await postgres.query(`
+            UPDATE api_keys
+            SET is_active = false
+            WHERE id = $1
+            RETURNING id, key_name, is_active
+        `, [keyId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'API key not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'API key revoked',
+            key: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Revoke API key error:', error);
+        res.status(500).json({
+            error: 'Failed to revoke API key',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Authentication endpoints loaded');
+
+// =====================================================================
+// DISCORD WEBHOOK ENDPOINTS
+// =====================================================================
+
+const discord = require('./lib/discord');
+
+// Configure Discord webhook
+app.post('/api/webhooks/discord/configure/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { webhook_url, webhook_name, alert_types } = req.body;
+
+        if (!webhook_url) {
+            return res.status(400).json({
+                error: 'Missing webhook_url',
+                message: 'Provide webhook_url in request body'
+            });
+        }
+
+        // Test webhook first
+        const testResult = await discord.testWebhook(webhook_url);
+        if (!testResult.success) {
+            return res.status(400).json({
+                error: 'Invalid webhook URL',
+                message: 'Failed to send test message to Discord webhook'
+            });
+        }
+
+        const result = await postgres.query(`
+            INSERT INTO discord_webhooks (
+                user_id, webhook_url, webhook_name, alert_types
+            ) VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, webhook_url)
+            DO UPDATE SET
+                webhook_name = EXCLUDED.webhook_name,
+                alert_types = EXCLUDED.alert_types,
+                enabled = true,
+                updated_at = NOW()
+            RETURNING *
+        `, [
+            userId,
+            webhook_url,
+            webhook_name || 'Default Webhook',
+            alert_types || ['price_alert', 'portfolio_milestone', 'snapshot_created']
+        ]);
+
+        res.json({
+            success: true,
+            message: 'Discord webhook configured and tested successfully',
+            webhook: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Configure webhook error:', error);
+        res.status(500).json({
+            error: 'Failed to configure webhook',
+            message: error.message
+        });
+    }
+});
+
+// Test Discord webhook
+app.post('/api/webhooks/discord/test/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const result = await postgres.query(`
+            SELECT webhook_url FROM discord_webhooks
+            WHERE user_id = $1 AND enabled = true
+            LIMIT 1
+        `, [userId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'No active webhook found',
+                message: 'Configure a webhook first'
+            });
+        }
+
+        const testResult = await discord.testWebhook(result.rows[0].webhook_url);
+
+        res.json({
+            success: testResult.success,
+            message: testResult.success ?
+                'Test message sent successfully' :
+                'Failed to send test message',
+            error: testResult.error
+        });
+    } catch (error) {
+        winston.error('Test webhook error:', error);
+        res.status(500).json({
+            error: 'Failed to test webhook',
+            message: error.message
+        });
+    }
+});
+
+// Get user's webhooks
+app.get('/api/webhooks/discord/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const result = await postgres.query(`
+            SELECT id, user_id, webhook_name, alert_types, enabled, created_at, updated_at
+            FROM discord_webhooks
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+        `, [userId]);
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            webhooks: result.rows
+        });
+    } catch (error) {
+        winston.error('Get webhooks error:', error);
+        res.status(500).json({
+            error: 'Failed to get webhooks',
+            message: error.message
+        });
+    }
+});
+
+// Delete webhook
+app.delete('/api/webhooks/discord/:webhookId', async (req, res) => {
+    try {
+        const { webhookId } = req.params;
+
+        const result = await postgres.query(`
+            DELETE FROM discord_webhooks
+            WHERE id = $1
+            RETURNING id, webhook_name
+        `, [webhookId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Webhook not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Webhook deleted',
+            webhook: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Delete webhook error:', error);
+        res.status(500).json({
+            error: 'Failed to delete webhook',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Discord webhook endpoints loaded');
+
+// =====================================================================
+// PRICE ALERT ENDPOINTS
+// =====================================================================
+
+// Create price alert
+app.post('/api/alerts/create', async (req, res) => {
+    try {
+        const { user_id, item_name, target_price, condition, marketplace } = req.body;
+
+        if (!user_id || !item_name || !target_price || !condition) {
+            return res.status(400).json({
+                error: 'Missing required fields',
+                message: 'Required: user_id, item_name, target_price, condition'
+            });
+        }
+
+        if (!['above', 'below'].includes(condition)) {
+            return res.status(400).json({
+                error: 'Invalid condition',
+                message: 'Condition must be "above" or "below"'
+            });
+        }
+
+        const result = await postgres.query(`
+            INSERT INTO price_alerts (
+                user_id, item_name, target_price, condition, marketplace
+            ) VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `, [user_id, item_name, target_price, condition, marketplace || 'steam']);
+
+        res.json({
+            success: true,
+            message: 'Price alert created',
+            alert: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Create alert error:', error);
+        res.status(500).json({
+            error: 'Failed to create alert',
+            message: error.message
+        });
+    }
+});
+
+// Get user's price alerts
+app.get('/api/alerts/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { active_only = 'true' } = req.query;
+
+        let query = `
+            SELECT * FROM price_alerts
+            WHERE user_id = $1
+        `;
+
+        if (active_only === 'true') {
+            query += ' AND is_active = true';
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        const result = await postgres.query(query, [userId]);
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            alerts: result.rows
+        });
+    } catch (error) {
+        winston.error('Get alerts error:', error);
+        res.status(500).json({
+            error: 'Failed to get alerts',
+            message: error.message
+        });
+    }
+});
+
+// Delete price alert
+app.delete('/api/alerts/:alertId', async (req, res) => {
+    try {
+        const { alertId } = req.params;
+
+        const result = await postgres.query(`
+            DELETE FROM price_alerts
+            WHERE id = $1
+            RETURNING id, item_name, target_price
+        `, [alertId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Alert not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Alert deleted',
+            alert: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Delete alert error:', error);
+        res.status(500).json({
+            error: 'Failed to delete alert',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Price alert endpoints loaded');
+
+// =====================================================================
+// BATCH PRICE UPDATE ENDPOINTS
+// =====================================================================
+
+const csgotrader = require('./lib/csgotrader');
+
+// Trigger price update for all marketplaces
+app.post('/api/prices/update-all', async (req, res) => {
+    try {
+        const { marketplaces } = req.body;
+
+        winston.info('Starting batch price update...');
+        const results = await csgotrader.updateAllPrices(postgres, marketplaces);
+
+        res.json({
+            success: true,
+            message: 'Price update completed',
+            ...results
+        });
+    } catch (error) {
+        winston.error('Price update error:', error);
+        res.status(500).json({
+            error: 'Failed to update prices',
+            message: error.message
+        });
+    }
+});
+
+// Get price update status
+app.get('/api/prices/update-status', async (req, res) => {
+    try {
+        const status = await csgotrader.getPriceUpdateStatus(postgres);
+
+        res.json({
+            success: true,
+            marketplaces: status
+        });
+    } catch (error) {
+        winston.error('Price status error:', error);
+        res.status(500).json({
+            error: 'Failed to get price status',
+            message: error.message
+        });
+    }
+});
+
+// Detect price changes
+app.post('/api/prices/detect-changes', async (req, res) => {
+    try {
+        const { threshold = 5 } = req.body;
+
+        const changes = await csgotrader.detectPriceChanges(postgres, threshold);
+
+        // Send Discord notifications for significant changes
+        for (const change of changes.slice(0, 10)) {
+            const webhooks = await postgres.query(`
+                SELECT webhook_url FROM discord_webhooks
+                WHERE enabled = true
+                AND 'price_change' = ANY(alert_types)
+            `);
+
+            for (const webhook of webhooks.rows) {
+                await discord.sendPriceChange(
+                    webhook.webhook_url,
+                    change.item_name,
+                    parseFloat(change.old_price),
+                    parseFloat(change.new_price),
+                    parseFloat(change.change_percent)
+                );
+            }
+        }
+
+        res.json({
+            success: true,
+            changes_detected: changes.length,
+            significant_changes: changes.slice(0, 20)
+        });
+    } catch (error) {
+        winston.error('Detect changes error:', error);
+        res.status(500).json({
+            error: 'Failed to detect changes',
+            message: error.message
+        });
+    }
+});
+
+// Get price for item from all marketplaces
+app.get('/api/prices/multi-market/:itemName', async (req, res) => {
+    try {
+        const itemName = decodeURIComponent(req.params.itemName);
+
+        const result = await postgres.query(`
+            SELECT marketplace, price, last_24h, last_7d, last_30d,
+                   starting_at, highest_order, updated_at
+            FROM marketplace_prices
+            WHERE item_name = $1
+            ORDER BY marketplace
+        `, [itemName]);
+
+        res.json({
+            success: true,
+            item_name: itemName,
+            count: result.rows.length,
+            prices: result.rows
+        });
+    } catch (error) {
+        winston.error('Multi-market price error:', error);
+        res.status(500).json({
+            error: 'Failed to get prices',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Batch price update endpoints loaded');
+
 // Helper function to calculate trade risk
 function calculateTradeRisk(history) {
     if (!history || history.length === 0) {
