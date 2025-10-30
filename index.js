@@ -2791,6 +2791,622 @@ app.get('/api/pricing/fee-examples', (req, res) => {
 
 winston.info('Steam fee calculation endpoints loaded');
 
+// =====================================================================
+// PORTFOLIO SNAPSHOTS & ADVANCED FEATURES
+// =====================================================================
+
+// Create portfolio snapshot
+app.post('/api/portfolio/snapshot/create/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { granularity = 'daily' } = req.body;
+
+        // Validate granularity
+        if (!['hourly', 'daily', 'monthly'].includes(granularity)) {
+            return res.status(400).json({
+                error: 'Invalid granularity',
+                message: 'Must be: hourly, daily, or monthly'
+            });
+        }
+
+        // Get all investments for user
+        const investments = await postgres.query(
+            'SELECT * FROM portfolio_investments WHERE user_id = $1 AND is_sold = false',
+            [userId]
+        );
+
+        if (investments.rows.length === 0) {
+            return res.status(404).json({
+                error: 'No investments found',
+                user_id: userId
+            });
+        }
+
+        // Calculate portfolio metrics
+        let totalValue = 0;
+        let totalInvested = 0;
+        let assetAllocation = {};
+
+        for (const inv of investments.rows) {
+            const invested = parseFloat(inv.purchase_price) * parseInt(inv.quantity);
+            totalInvested += invested;
+
+            // Get current price (from price_override or cached price)
+            let currentPrice = inv.price_override;
+            if (!currentPrice) {
+                const cached = await postgres.getCachedPrice(inv.item_name);
+                currentPrice = cached?.price || inv.purchase_price;
+            }
+
+            const currentValue = parseFloat(currentPrice) * parseInt(inv.quantity);
+            totalValue += currentValue;
+
+            // Asset allocation
+            const category = inv.tags && inv.tags.length > 0 ? inv.tags[0] : 'Other';
+            assetAllocation[category] = (assetAllocation[category] || 0) + currentValue;
+        }
+
+        // Get realized profit from sales
+        const salesResult = await postgres.query(
+            'SELECT COALESCE(SUM(profit_loss), 0) as realized FROM portfolio_sales WHERE user_id = $1',
+            [userId]
+        );
+        const realizedProfit = parseFloat(salesResult.rows[0].realized) || 0;
+
+        // Calculate unrealized profit
+        const unrealizedProfit = totalValue - totalInvested;
+        const totalRoi = totalInvested > 0 ? ((totalValue - totalInvested + realizedProfit) / totalInvested) * 100 : 0;
+
+        // Determine snapshot date based on granularity
+        let snapshotDate = new Date();
+        if (granularity === 'hourly') {
+            snapshotDate.setMinutes(0, 0, 0);
+        } else if (granularity === 'daily') {
+            snapshotDate.setHours(0, 0, 0, 0);
+        } else if (granularity === 'monthly') {
+            snapshotDate.setDate(1);
+            snapshotDate.setHours(0, 0, 0, 0);
+        }
+
+        // Insert snapshot (will update if exists due to unique constraint)
+        const result = await postgres.query(`
+            INSERT INTO portfolio_snapshots (
+                user_id, snapshot_date, granularity,
+                total_value, total_invested, realized_profit, unrealized_profit,
+                total_roi, item_count, asset_allocation
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (user_id, snapshot_date, granularity)
+            DO UPDATE SET
+                total_value = EXCLUDED.total_value,
+                total_invested = EXCLUDED.total_invested,
+                realized_profit = EXCLUDED.realized_profit,
+                unrealized_profit = EXCLUDED.unrealized_profit,
+                total_roi = EXCLUDED.total_roi,
+                item_count = EXCLUDED.item_count,
+                asset_allocation = EXCLUDED.asset_allocation,
+                created_at = NOW()
+            RETURNING *
+        `, [
+            userId,
+            snapshotDate,
+            granularity,
+            totalValue.toFixed(2),
+            totalInvested.toFixed(2),
+            realizedProfit.toFixed(2),
+            unrealizedProfit.toFixed(2),
+            totalRoi.toFixed(2),
+            investments.rows.length,
+            JSON.stringify(assetAllocation)
+        ]);
+
+        res.json({
+            success: true,
+            snapshot: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Snapshot creation error:', error);
+        res.status(500).json({
+            error: 'Failed to create snapshot',
+            message: error.message
+        });
+    }
+});
+
+// Get portfolio snapshot history
+app.get('/api/portfolio/snapshot/history/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const granularity = req.query.granularity || 'daily';
+        const period = req.query.period || '30d';
+
+        // Parse period (e.g., '7d', '30d', '90d', '1y')
+        const match = period.match(/^(\d+)([dmy])$/);
+        if (!match) {
+            return res.status(400).json({
+                error: 'Invalid period format',
+                message: 'Use format like: 7d, 30d, 90d, 1y'
+            });
+        }
+
+        const amount = parseInt(match[1]);
+        const unit = match[2];
+        const date = new Date();
+
+        if (unit === 'd') {
+            date.setDate(date.getDate() - amount);
+        } else if (unit === 'm') {
+            date.setMonth(date.getMonth() - amount);
+        } else if (unit === 'y') {
+            date.setFullYear(date.getFullYear() - amount);
+        }
+
+        const snapshots = await postgres.query(`
+            SELECT * FROM portfolio_snapshots
+            WHERE user_id = $1
+            AND granularity = $2
+            AND snapshot_date >= $3
+            ORDER BY snapshot_date DESC
+        `, [userId, granularity, date]);
+
+        res.json({
+            success: true,
+            user_id: userId,
+            granularity,
+            period,
+            count: snapshots.rows.length,
+            snapshots: snapshots.rows
+        });
+    } catch (error) {
+        winston.error('Snapshot history error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch snapshot history',
+            message: error.message
+        });
+    }
+});
+
+// Get chart data for portfolio visualization
+app.get('/api/portfolio/chart/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const granularity = req.query.granularity || 'daily';
+        const days = parseInt(req.query.days) || 30;
+
+        const date = new Date();
+        date.setDate(date.getDate() - days);
+
+        const snapshots = await postgres.query(`
+            SELECT
+                snapshot_date,
+                total_value,
+                total_invested,
+                realized_profit + unrealized_profit as total_profit,
+                total_roi
+            FROM portfolio_snapshots
+            WHERE user_id = $1
+            AND granularity = $2
+            AND snapshot_date >= $3
+            ORDER BY snapshot_date ASC
+        `, [userId, granularity, date]);
+
+        // Format for chart libraries
+        const chartData = {
+            labels: snapshots.rows.map(s => s.snapshot_date.toISOString().split('T')[0]),
+            datasets: [
+                {
+                    label: 'Portfolio Value',
+                    data: snapshots.rows.map(s => parseFloat(s.total_value))
+                },
+                {
+                    label: 'Total Invested',
+                    data: snapshots.rows.map(s => parseFloat(s.total_invested))
+                },
+                {
+                    label: 'Profit/Loss',
+                    data: snapshots.rows.map(s => parseFloat(s.total_profit))
+                }
+            ]
+        };
+
+        res.json({
+            success: true,
+            user_id: userId,
+            granularity,
+            days,
+            chart_data: chartData
+        });
+    } catch (error) {
+        winston.error('Chart data error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch chart data',
+            message: error.message
+        });
+    }
+});
+
+// Partial sale (sell portion of investment)
+app.post('/api/portfolio/sale/partial', async (req, res) => {
+    try {
+        const {
+            investment_id,
+            quantity_sold,
+            sale_price,
+            marketplace,
+            notes
+        } = req.body;
+
+        if (!investment_id || !quantity_sold || !sale_price) {
+            return res.status(400).json({
+                error: 'Missing required fields',
+                message: 'Required: investment_id, quantity_sold, sale_price'
+            });
+        }
+
+        // Get investment
+        const invResult = await postgres.query(
+            'SELECT * FROM portfolio_investments WHERE id = $1',
+            [investment_id]
+        );
+
+        if (invResult.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Investment not found',
+                investment_id
+            });
+        }
+
+        const investment = invResult.rows[0];
+        const currentQuantity = parseInt(investment.quantity);
+        const soldQuantity = parseInt(quantity_sold);
+
+        if (soldQuantity > currentQuantity) {
+            return res.status(400).json({
+                error: 'Cannot sell more than owned',
+                current_quantity: currentQuantity,
+                quantity_sold: soldQuantity
+            });
+        }
+
+        // Calculate profit/loss
+        const buyPricePerUnit = parseFloat(investment.purchase_price);
+        const salePricePerUnit = parseFloat(sale_price);
+        const totalSaleValue = salePricePerUnit * soldQuantity;
+        const profitLoss = (salePricePerUnit - buyPricePerUnit) * soldQuantity;
+        const roiPercent = buyPricePerUnit > 0 ? (profitLoss / (buyPricePerUnit * soldQuantity)) * 100 : 0;
+
+        // Record sale
+        const saleResult = await postgres.query(`
+            INSERT INTO portfolio_sales (
+                investment_id, user_id, item_name, item_skin_name,
+                item_condition, item_variant, quantity_sold,
+                buy_price_per_unit, price_per_unit, total_sale_value,
+                sale_date, marketplace, profit_loss, roi_percent, notes,
+                remaining_quantity, image_url
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12, $13, $14, $15, $16)
+            RETURNING *
+        `, [
+            investment_id,
+            investment.user_id,
+            investment.item_name,
+            investment.skin_name,
+            investment.wear,
+            investment.is_stattrak ? 'stattrak' : 'normal',
+            soldQuantity,
+            buyPricePerUnit,
+            salePricePerUnit,
+            totalSaleValue,
+            marketplace,
+            profitLoss,
+            roiPercent,
+            notes,
+            currentQuantity - soldQuantity,
+            investment.image_url
+        ]);
+
+        // Update investment quantity
+        const remainingQuantity = currentQuantity - soldQuantity;
+        if (remainingQuantity === 0) {
+            await postgres.query(
+                'UPDATE portfolio_investments SET quantity = 0, is_sold = true WHERE id = $1',
+                [investment_id]
+            );
+        } else {
+            await postgres.query(
+                'UPDATE portfolio_investments SET quantity = $1 WHERE id = $2',
+                [remainingQuantity, investment_id]
+            );
+        }
+
+        res.json({
+            success: true,
+            sale: saleResult.rows[0],
+            remaining_quantity: remainingQuantity,
+            fully_sold: remainingQuantity === 0
+        });
+    } catch (error) {
+        winston.error('Partial sale error:', error);
+        res.status(500).json({
+            error: 'Failed to record sale',
+            message: error.message
+        });
+    }
+});
+
+// Get P&L breakdown (realized vs unrealized)
+app.get('/api/portfolio/pnl/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const type = req.query.type || 'total'; // realized, unrealized, or total
+
+        // Get realized P&L from sales
+        const salesResult = await postgres.query(`
+            SELECT
+                COALESCE(SUM(profit_loss), 0) as realized_profit,
+                COALESCE(SUM(quantity_sold), 0) as total_sold,
+                COUNT(*) as sale_count
+            FROM portfolio_sales
+            WHERE user_id = $1
+        `, [userId]);
+
+        const realized = {
+            profit: parseFloat(salesResult.rows[0].realized_profit),
+            items_sold: parseInt(salesResult.rows[0].total_sold),
+            sale_count: parseInt(salesResult.rows[0].sale_count)
+        };
+
+        // Get unrealized P&L from current holdings
+        const investments = await postgres.query(`
+            SELECT * FROM portfolio_investments
+            WHERE user_id = $1 AND is_sold = false
+        `, [userId]);
+
+        let unrealizedProfit = 0;
+        let totalInvested = 0;
+        let totalValue = 0;
+
+        for (const inv of investments.rows) {
+            const invested = parseFloat(inv.purchase_price) * parseInt(inv.quantity);
+            totalInvested += invested;
+
+            let currentPrice = inv.price_override;
+            if (!currentPrice) {
+                const cached = await postgres.getCachedPrice(inv.item_name);
+                currentPrice = cached?.price || inv.purchase_price;
+            }
+
+            const currentValue = parseFloat(currentPrice) * parseInt(inv.quantity);
+            totalValue += currentValue;
+        }
+
+        unrealizedProfit = totalValue - totalInvested;
+
+        const unrealized = {
+            profit: unrealizedProfit,
+            total_invested: totalInvested,
+            current_value: totalValue,
+            item_count: investments.rows.length
+        };
+
+        const total = {
+            profit: realized.profit + unrealized.profit,
+            total_return: totalInvested > 0 ? ((realized.profit + unrealized.profit) / totalInvested) * 100 : 0
+        };
+
+        let response = {
+            success: true,
+            user_id: userId
+        };
+
+        if (type === 'realized') {
+            response.realized = realized;
+        } else if (type === 'unrealized') {
+            response.unrealized = unrealized;
+        } else {
+            response = { ...response, realized, unrealized, total };
+        }
+
+        res.json(response);
+    } catch (error) {
+        winston.error('P&L calculation error:', error);
+        res.status(500).json({
+            error: 'Failed to calculate P&L',
+            message: error.message
+        });
+    }
+});
+
+// Price override (manual price for items without market data)
+app.patch('/api/portfolio/investment/:investmentId/price-override', async (req, res) => {
+    try {
+        const { investmentId } = req.params;
+        const { price_override } = req.body;
+
+        if (price_override !== null && (isNaN(price_override) || price_override < 0)) {
+            return res.status(400).json({
+                error: 'Invalid price_override',
+                message: 'Must be a positive number or null to remove override'
+            });
+        }
+
+        const result = await postgres.query(
+            'UPDATE portfolio_investments SET price_override = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+            [price_override, investmentId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Investment not found',
+                investment_id: investmentId
+            });
+        }
+
+        res.json({
+            success: true,
+            investment: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Price override error:', error);
+        res.status(500).json({
+            error: 'Failed to set price override',
+            message: error.message
+        });
+    }
+});
+
+// Marketplace override (preferred marketplace per item)
+app.patch('/api/portfolio/investment/:investmentId/marketplace-override', async (req, res) => {
+    try {
+        const { investmentId } = req.params;
+        const { marketplace_override } = req.body;
+
+        const validMarkets = ['steam', 'csfloat', 'skinport', 'buff163', 'dmarket', null];
+        if (!validMarkets.includes(marketplace_override)) {
+            return res.status(400).json({
+                error: 'Invalid marketplace',
+                message: 'Must be: steam, csfloat, skinport, buff163, dmarket, or null'
+            });
+        }
+
+        const result = await postgres.query(
+            'UPDATE portfolio_investments SET marketplace_override = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+            [marketplace_override, investmentId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Investment not found',
+                investment_id: investmentId
+            });
+        }
+
+        res.json({
+            success: true,
+            investment: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Marketplace override error:', error);
+        res.status(500).json({
+            error: 'Failed to set marketplace override',
+            message: error.message
+        });
+    }
+});
+
+// Get user settings
+app.get('/api/user/settings/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        let result = await postgres.query(
+            'SELECT * FROM user_settings WHERE user_id = $1',
+            [userId]
+        );
+
+        if (result.rows.length === 0) {
+            // Create default settings
+            result = await postgres.query(`
+                INSERT INTO user_settings (user_id) VALUES ($1) RETURNING *
+            `, [userId]);
+        }
+
+        res.json({
+            success: true,
+            settings: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Get settings error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch settings',
+            message: error.message
+        });
+    }
+});
+
+// Update user settings
+app.patch('/api/user/settings/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const {
+            marketplace_priority,
+            timezone,
+            currency,
+            auto_snapshot,
+            snapshot_frequency
+        } = req.body;
+
+        // Build update query dynamically
+        const updates = [];
+        const values = [userId];
+        let paramCount = 2;
+
+        if (marketplace_priority) {
+            updates.push(`marketplace_priority = $${paramCount++}`);
+            values.push(marketplace_priority);
+        }
+        if (timezone) {
+            updates.push(`timezone = $${paramCount++}`);
+            values.push(timezone);
+        }
+        if (currency) {
+            updates.push(`currency = $${paramCount++}`);
+            values.push(currency);
+        }
+        if (auto_snapshot !== undefined) {
+            updates.push(`auto_snapshot = $${paramCount++}`);
+            values.push(auto_snapshot);
+        }
+        if (snapshot_frequency) {
+            updates.push(`snapshot_frequency = $${paramCount++}`);
+            values.push(snapshot_frequency);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({
+                error: 'No fields to update'
+            });
+        }
+
+        updates.push('updated_at = NOW()');
+
+        const query = `
+            UPDATE user_settings SET ${updates.join(', ')}
+            WHERE user_id = $1
+            RETURNING *
+        `;
+
+        let result = await postgres.query(query, values);
+
+        if (result.rows.length === 0) {
+            // Create if doesn't exist
+            result = await postgres.query(`
+                INSERT INTO user_settings (user_id, marketplace_priority, timezone, currency, auto_snapshot, snapshot_frequency)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING *
+            `, [
+                userId,
+                marketplace_priority || ['steam', 'csfloat', 'skinport', 'buff163'],
+                timezone || 'UTC',
+                currency || 'USD',
+                auto_snapshot !== undefined ? auto_snapshot : true,
+                snapshot_frequency || 'daily'
+            ]);
+        }
+
+        res.json({
+            success: true,
+            settings: result.rows[0]
+        });
+    } catch (error) {
+        winston.error('Update settings error:', error);
+        res.status(500).json({
+            error: 'Failed to update settings',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Portfolio snapshots and advanced features loaded');
+
 // Helper function to calculate trade risk
 function calculateTradeRisk(history) {
     if (!history || history.length === 0) {
