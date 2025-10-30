@@ -1949,6 +1949,733 @@ pm.test("Response contains investment ID", function () {
 
 ---
 
+## CSGO-API Integration Endpoints
+
+### Get Float Range for Item
+
+Retrieve min/max float values and available wear conditions for any CS2 item.
+
+**Endpoint:** `GET /api/items/float-range/:itemName`
+
+**Parameters:**
+- `itemName` (path) - URL-encoded item name
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "item_name": "AK-47 | Redline",
+    "min_float": 0.1,
+    "max_float": 0.7,
+    "wears": [
+      "SFUI_InvTooltip_Wear_Amount_1",
+      "SFUI_InvTooltip_Wear_Amount_2",
+      "SFUI_InvTooltip_Wear_Amount_3"
+    ],
+    "rarity": {
+      "id": "rarity_mythical_weapon",
+      "name": "Classified",
+      "color": "#d32ce6"
+    },
+    "category": {
+      "id": "csgo_inventory_weapon_category_rifles",
+      "name": "Rifles"
+    },
+    "weapon": {
+      "id": "weapon_ak47",
+      "weapon_id": 7,
+      "name": "AK-47"
+    }
+  }
+}
+```
+
+**Example:**
+```bash
+curl "http://localhost:3002/api/items/float-range/AK-47%20%7C%20Redline"
+```
+
+---
+
+### Get Doppler Phase
+
+Identify doppler phase by paint index (Ruby, Sapphire, Black Pearl, Phase 1-4).
+
+**Endpoint:** `GET /api/items/doppler-phase/:paintIndex`
+
+**Parameters:**
+- `paintIndex` (path) - Paint kit index number
+
+**Supported Phases:**
+- Standard Doppler: 415 (Ruby), 416 (Sapphire), 417 (Black Pearl), 418-421 (Phase 1-4)
+- Gamma Doppler: 568 (Emerald), 569-572 (Phase 1-4)
+- Glock-18 Gamma: 1119 (Emerald), 1120-1123 (Phase 1-4)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "phase": "Ruby",
+    "paint_index": "415",
+    "type": "Doppler",
+    "is_rare": true
+  }
+}
+```
+
+**Example:**
+```bash
+# Check if Karambit is Ruby
+curl "http://localhost:3002/api/items/doppler-phase/415"
+```
+
+---
+
+### Get Item Metadata
+
+Complete metadata for any CS2 item including collections, cases, and float ranges.
+
+**Endpoint:** `GET /api/items/metadata/:itemName`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "skin-91a429af4a60",
+    "name": "AK-47 | Redline",
+    "description": "It has been painted using a carbon fiber hydrographic...",
+    "weapon": { "id": "weapon_ak47", "weapon_id": 7, "name": "AK-47" },
+    "category": { "id": "csgo_inventory_weapon_category_rifles", "name": "Rifles" },
+    "pattern": { "id": "aa_redline", "name": "Redline" },
+    "min_float": 0.1,
+    "max_float": 0.7,
+    "rarity": { "id": "rarity_mythical_weapon", "name": "Classified", "color": "#d32ce6" },
+    "stattrak": true,
+    "souvenir": false,
+    "paint_index": "282",
+    "wears": ["MW", "FT", "WW", "BS"],
+    "collections": [...],
+    "crates": [...],
+    "image": "https://..."
+  }
+}
+```
+
+---
+
+### Search Items
+
+Fuzzy search across entire CS2 item database.
+
+**Endpoint:** `GET /api/items/search?q=query&limit=20`
+
+**Parameters:**
+- `q` or `query` (query) - Search term
+- `limit` (query, optional) - Max results (default: 20)
+
+**Response:**
+```json
+{
+  "success": true,
+  "query": "AK-47",
+  "count": 20,
+  "results": [
+    {
+      "id": "skin-91a429af4a60",
+      "name": "AK-47 | Redline",
+      "weapon": "AK-47",
+      "category": "Rifles",
+      "rarity": "Classified",
+      "image": "https://...",
+      "min_float": 0.1,
+      "max_float": 0.7
+    }
+  ]
+}
+```
+
+---
+
+### Get Case Contents
+
+Retrieve all items contained in a specific case.
+
+**Endpoint:** `GET /api/items/case/:caseName`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "case_name": "Kilowatt Case",
+    "case_id": "crate-4904",
+    "type": "Case",
+    "first_sale_date": "2024-01-16",
+    "rarity": { "id": "rarity_rare_weapon", "name": "Base Grade", "color": "#4b69ff" },
+    "contains": [...],
+    "contains_rare": [...],
+    "image": "https://..."
+  }
+}
+```
+
+---
+
+### Cache Management
+
+**Get Cache Status**
+
+**Endpoint:** `GET /api/items/cache/status`
+
+**Response:**
+```json
+{
+  "success": true,
+  "cache": [
+    {
+      "file": "skins.json",
+      "size": "5234.56 KB",
+      "age_hours": "2.5",
+      "valid": true
+    }
+  ]
+}
+```
+
+**Clear Cache (Force Refresh)**
+
+**Endpoint:** `POST /api/items/cache/clear`
+
+**Response:**
+```json
+{
+  "success": true,
+  "cleared": 3
+}
+```
+
+---
+
+## Steam Fee Calculation Endpoints
+
+### Calculate Seller Receives
+
+Calculate what seller receives after Steam takes their fee (10-13.05%).
+
+**Endpoint:** `POST /api/pricing/seller-receives`
+
+**Request Body:**
+```json
+{
+  "buyer_price": 100.00
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "buyer_pays": 100.00,
+  "seller_receives": 89.83,
+  "fee_amount": 10.17,
+  "fee_percent": 10.17
+}
+```
+
+**Fee Formula:**
+Steam fees scale from 10% to 13.05% based on price ($0.20 - $1800).
+
+---
+
+### Calculate Buyer Price
+
+Calculate what buyer needs to pay for seller to receive target amount.
+
+**Endpoint:** `POST /api/pricing/buyer-price`
+
+**Request Body:**
+```json
+{
+  "seller_amount": 90.00
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "buyer_pays": 100.19,
+  "seller_receives": 90.00,
+  "fee_amount": 10.19,
+  "fee_percent": 10.17
+}
+```
+
+---
+
+### Fee Breakdown
+
+Detailed breakdown of Steam and publisher fees.
+
+**Endpoint:** `POST /api/pricing/fee-breakdown`
+
+**Request Body:**
+```json
+{
+  "buyer_price": 100.00
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "buyer_pays": 100.00,
+  "seller_receives": 89.83,
+  "fee_amount": 10.17,
+  "fee_percent": 10.17,
+  "breakdown": {
+    "steam_fee": 5.09,
+    "publisher_fee": 5.08,
+    "total_fee": 10.17
+  }
+}
+```
+
+---
+
+### Calculate Profit with Fees
+
+Calculate profit after Steam fees for investment analysis.
+
+**Endpoint:** `POST /api/pricing/calculate-profit`
+
+**Request Body:**
+```json
+{
+  "buy_price": 50.00,
+  "current_market_price": 100.00
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "buy_price": 50.00,
+  "current_market_price": 100.00,
+  "seller_receives_after_fee": 89.83,
+  "profit": 39.83,
+  "profit_percent": 79.66,
+  "fee_info": {
+    "buyer_pays": 100.00,
+    "seller_receives": 89.83,
+    "fee_amount": 10.17,
+    "fee_percent": 10.17
+  }
+}
+```
+
+---
+
+### Fee Examples
+
+Get fee examples at different price points.
+
+**Endpoint:** `GET /api/pricing/fee-examples`
+
+**Response:**
+```json
+{
+  "success": true,
+  "examples": [
+    { "buyer_pays": 0.20, "seller_receives": 0.18, "fee_amount": 0.02, "fee_percent": 10.00 },
+    { "buyer_pays": 1, "seller_receives": 0.90, "fee_amount": 0.10, "fee_percent": 10.00 },
+    { "buyer_pays": 100, "seller_receives": 89.83, "fee_amount": 10.17, "fee_percent": 10.17 },
+    { "buyer_pays": 1800, "seller_receives": 1565.10, "fee_amount": 234.90, "fee_percent": 13.05 }
+  ],
+  "note": "Steam fees scale from 10% to 13.05% based on price"
+}
+```
+
+---
+
+## Advanced Portfolio Endpoints
+
+### Create Portfolio Snapshot
+
+Create a point-in-time snapshot of portfolio value and metrics.
+
+**Endpoint:** `POST /api/portfolio/snapshot/create/:userId`
+
+**Request Body:**
+```json
+{
+  "granularity": "daily"
+}
+```
+
+**Granularity Options:**
+- `hourly` - Snapshot at :00 minutes
+- `daily` - Snapshot at 00:00 hours (default)
+- `monthly` - Snapshot on 1st at 00:00
+
+**Response:**
+```json
+{
+  "success": true,
+  "snapshot": {
+    "id": 15,
+    "user_id": "testuser123",
+    "snapshot_date": "2025-10-30T00:00:00.000Z",
+    "granularity": "daily",
+    "total_value": 5250.75,
+    "total_invested": 4500.00,
+    "realized_profit": 150.25,
+    "unrealized_profit": 750.75,
+    "total_roi": 20.02,
+    "item_count": 12,
+    "asset_allocation": {
+      "Knives": 2500.00,
+      "Rifles": 1750.00,
+      "Cases": 1000.75
+    },
+    "created_at": "2025-10-30T14:30:00.000Z"
+  }
+}
+```
+
+**Use Cases:**
+- Daily portfolio tracking
+- Chart data generation
+- Performance analysis
+- Historical comparison
+
+---
+
+### Get Snapshot History
+
+Retrieve historical snapshots for time-series analysis.
+
+**Endpoint:** `GET /api/portfolio/snapshot/history/:userId?granularity=daily&period=30d`
+
+**Parameters:**
+- `granularity` (query, optional) - hourly, daily, or monthly (default: daily)
+- `period` (query, optional) - Time period (default: 30d)
+  - Format: `{number}{unit}` where unit is `d` (days), `m` (months), or `y` (years)
+  - Examples: `7d`, `30d`, `90d`, `6m`, `1y`
+
+**Response:**
+```json
+{
+  "success": true,
+  "user_id": "testuser123",
+  "granularity": "daily",
+  "period": "30d",
+  "count": 30,
+  "snapshots": [
+    {
+      "id": 15,
+      "snapshot_date": "2025-10-30T00:00:00.000Z",
+      "total_value": 5250.75,
+      "total_invested": 4500.00,
+      "realized_profit": 150.25,
+      "unrealized_profit": 750.75,
+      "total_roi": 20.02,
+      "item_count": 12,
+      "asset_allocation": {...}
+    }
+  ]
+}
+```
+
+---
+
+### Get Chart Data
+
+Chart-ready data format for portfolio visualization (compatible with Chart.js, Recharts, etc.).
+
+**Endpoint:** `GET /api/portfolio/chart/:userId?granularity=daily&days=30`
+
+**Parameters:**
+- `granularity` (query, optional) - hourly, daily, or monthly (default: daily)
+- `days` (query, optional) - Number of days back (default: 30)
+
+**Response:**
+```json
+{
+  "success": true,
+  "user_id": "testuser123",
+  "granularity": "daily",
+  "days": 30,
+  "chart_data": {
+    "labels": ["2025-10-01", "2025-10-02", "2025-10-03", ...],
+    "datasets": [
+      {
+        "label": "Portfolio Value",
+        "data": [5000.00, 5100.25, 5050.75, ...]
+      },
+      {
+        "label": "Total Invested",
+        "data": [4500.00, 4500.00, 4500.00, ...]
+      },
+      {
+        "label": "Profit/Loss",
+        "data": [500.00, 600.25, 550.75, ...]
+      }
+    ]
+  }
+}
+```
+
+**Frontend Integration:**
+```javascript
+// React with Chart.js
+const response = await fetch('/api/portfolio/chart/user123?days=30');
+const { chart_data } = await response.json();
+
+<Line data={chart_data} options={...} />
+```
+
+---
+
+### Record Partial Sale
+
+Sell a portion of a multi-item investment.
+
+**Endpoint:** `POST /api/portfolio/sale/partial`
+
+**Request Body:**
+```json
+{
+  "investment_id": 5,
+  "quantity_sold": 3,
+  "sale_price": 25.50,
+  "marketplace": "steam",
+  "notes": "Took profit on price spike"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "sale": {
+    "id": 10,
+    "investment_id": 5,
+    "user_id": "testuser123",
+    "item_name": "AK-47 | Redline",
+    "quantity_sold": 3,
+    "buy_price_per_unit": 20.00,
+    "price_per_unit": 25.50,
+    "total_sale_value": 76.50,
+    "profit_loss": 16.50,
+    "roi_percent": 27.50,
+    "sale_date": "2025-10-30T14:30:00.000Z",
+    "marketplace": "steam",
+    "notes": "Took profit on price spike",
+    "remaining_quantity": 7
+  },
+  "remaining_quantity": 7,
+  "fully_sold": false
+}
+```
+
+**Features:**
+- Automatic profit/loss calculation
+- ROI percentage per sale
+- Updates investment quantity
+- Auto-marks as sold when quantity = 0
+
+---
+
+### Get P&L Breakdown
+
+Separate realized (from sales) and unrealized (from holdings) profit/loss.
+
+**Endpoint:** `GET /api/portfolio/pnl/:userId?type=total`
+
+**Parameters:**
+- `type` (query, optional) - realized, unrealized, or total (default: total)
+
+**Response:**
+```json
+{
+  "success": true,
+  "user_id": "testuser123",
+  "realized": {
+    "profit": 250.50,
+    "items_sold": 15,
+    "sale_count": 8
+  },
+  "unrealized": {
+    "profit": 750.25,
+    "total_invested": 4500.00,
+    "current_value": 5250.25,
+    "item_count": 12
+  },
+  "total": {
+    "profit": 1000.75,
+    "total_return": 22.24
+  }
+}
+```
+
+**Use Cases:**
+- Tax reporting (realized gains)
+- Performance analysis
+- Portfolio rebalancing decisions
+
+---
+
+### Set Price Override
+
+Manually set price for items without market data (rare patterns, stickers, etc.).
+
+**Endpoint:** `PATCH /api/portfolio/investment/:investmentId/price-override`
+
+**Request Body:**
+```json
+{
+  "price_override": 15000.00
+}
+```
+
+**Remove Override:**
+```json
+{
+  "price_override": null
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "investment": {
+    "id": 5,
+    "item_name": "AK-47 | Case Hardened (Pattern #661)",
+    "purchase_price": 5000.00,
+    "price_override": 15000.00,
+    "updated_at": "2025-10-30T14:30:00.000Z"
+  }
+}
+```
+
+**When to Use:**
+- Blue Gem patterns without market listings
+- Items with expensive stickers
+- Custom craft items
+- Rare float values
+
+---
+
+### Set Marketplace Override
+
+Set preferred marketplace for pricing specific items.
+
+**Endpoint:** `PATCH /api/portfolio/investment/:investmentId/marketplace-override`
+
+**Request Body:**
+```json
+{
+  "marketplace_override": "csfloat"
+}
+```
+
+**Supported Marketplaces:**
+- `steam` - Steam Community Market
+- `csfloat` - CSFloat Market
+- `skinport` - Skinport
+- `buff163` - Buff163
+- `dmarket` - DMarket
+- `null` - Remove override (use user's default priority)
+
+**Response:**
+```json
+{
+  "success": true,
+  "investment": {
+    "id": 5,
+    "item_name": "Karambit | Doppler (Ruby)",
+    "marketplace_override": "csfloat",
+    "updated_at": "2025-10-30T14:30:00.000Z"
+  }
+}
+```
+
+---
+
+### Get User Settings
+
+Retrieve user preferences (creates defaults if missing).
+
+**Endpoint:** `GET /api/user/settings/:userId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "settings": {
+    "id": 1,
+    "user_id": "testuser123",
+    "marketplace_priority": ["steam", "csfloat", "skinport", "buff163"],
+    "timezone": "UTC",
+    "currency": "USD",
+    "auto_snapshot": true,
+    "snapshot_frequency": "daily",
+    "created_at": "2025-10-30T12:00:00.000Z",
+    "updated_at": "2025-10-30T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+### Update User Settings
+
+Update user preferences.
+
+**Endpoint:** `PATCH /api/user/settings/:userId`
+
+**Request Body:**
+```json
+{
+  "marketplace_priority": ["csfloat", "buff163", "steam", "skinport"],
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "auto_snapshot": true,
+  "snapshot_frequency": "daily"
+}
+```
+
+**Snapshot Frequency Options:**
+- `hourly` - Create hourly snapshots
+- `daily` - Create daily snapshots (default)
+- `weekly` - Create weekly snapshots
+
+**Response:**
+```json
+{
+  "success": true,
+  "settings": {
+    "id": 1,
+    "user_id": "testuser123",
+    "marketplace_priority": ["csfloat", "buff163", "steam", "skinport"],
+    "timezone": "America/New_York",
+    "currency": "USD",
+    "auto_snapshot": true,
+    "snapshot_frequency": "daily",
+    "updated_at": "2025-10-30T14:30:00.000Z"
+  }
+}
+```
+
+---
+
 ## Rate Limiting
 
 **Current Status:** No rate limiting implemented
@@ -1960,6 +2687,51 @@ pm.test("Response contains investment ID", function () {
 ---
 
 ## Changelog
+
+### Version 1.2.0 (October 30, 2025) - Advanced Features Edition
+**20 new endpoints added** (total: 33 endpoints)
+
+#### CSGO-API Integration (7 new endpoints)
+- ✅ Float range lookup for all CS2 items (70,000+ skins)
+- ✅ Doppler phase detection (Ruby, Sapphire, Black Pearl, Emerald, Phases 1-4)
+- ✅ Complete item metadata (rarity, categories, collections, cases)
+- ✅ Item search with fuzzy matching
+- ✅ Case contents lookup
+- ✅ Local caching system (24-hour TTL, 5.2MB database)
+- ✅ Cache management endpoints
+
+#### Steam Fee Calculation (4 new endpoints)
+- ✅ Accurate Steam fee calculation (scales 10-13.05%)
+- ✅ Seller receives calculation
+- ✅ Buyer price calculation (reverse fee calc)
+- ✅ Profit calculation WITH fees included
+- ✅ Fee breakdown (Steam + publisher split)
+- ✅ Fee examples at multiple price points
+
+#### Advanced Portfolio Features (9 new endpoints)
+- ✅ Portfolio snapshots with time-series tracking (hourly/daily/monthly)
+- ✅ Historical snapshot retrieval with period filters
+- ✅ Chart-ready data format for visualization
+- ✅ Partial sales tracking (sell portions of investments)
+- ✅ P&L breakdown (realized vs unrealized profit)
+- ✅ Price overrides for rare items without market data
+- ✅ Marketplace overrides (per-item marketplace preference)
+- ✅ User settings management
+- ✅ Marketplace priority configuration
+
+#### Database Enhancements
+- New `user_settings` table for preferences
+- Added `original_quantity`, `price_override`, `marketplace_override` fields
+- Added `remaining_quantity` to sales tracking
+- Added `granularity` field to snapshots
+- New indexes for time-series queries
+
+#### Libraries Added
+- `/lib/csgoapi.js` - CSGO-API integration (400+ lines)
+- `/lib/steam-fees.js` - Steam fee calculations (300+ lines)
+
+#### Dependencies
+- node-fetch@2.7.0 for HTTP requests
 
 ### Version 1.1.0 (October 30, 2025) - Enhanced Edition
 - **7 new enhanced endpoints** added (total: 13 endpoints)
@@ -1983,12 +2755,13 @@ pm.test("Response contains investment ID", function () {
 - Database schema with 6 tables
 
 ### Planned Features (v2.0.0)
-- Daily portfolio snapshots (automated)
-- Historical performance charts
-- Email/webhook notifications for price changes
-- More pattern detection (Fade %, Doppler phases, Crimson Web)
+- Automated portfolio snapshots (cron jobs)
+- Email/webhook notifications for price changes (Discord integration)
+- Batch price updates from CSGOTrader API
+- More pattern detection (Fade %, Crimson Web)
 - WebSocket support for real-time updates
-- Advanced filtering and sorting options
+- Steam OAuth authentication
+- Steam inventory sync
 
 ---
 
