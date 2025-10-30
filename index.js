@@ -1489,7 +1489,7 @@ app.post('/api/portfolio/sale', async (req, res) => {
         // Insert sale record
         await postgres.pool.query(`
             INSERT INTO portfolio_sales (
-                investment_id, user_id, quantity, sale_price,
+                investment_id, user_id, quantity_sold, sale_price,
                 marketplace, profit_loss, roi_percent, notes
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -1506,7 +1506,7 @@ app.post('/api/portfolio/sale', async (req, res) => {
 
         // Check if fully sold
         const salesResult = await postgres.pool.query(`
-            SELECT SUM(quantity) as total_sold
+            SELECT SUM(quantity_sold) as total_sold
             FROM portfolio_sales
             WHERE investment_id = $1
         `, [investmentId]);
@@ -2182,7 +2182,7 @@ app.get('/api/portfolio/activity/:userId', async (req, res) => {
 
         // Get recent sales
         const salesResult = await postgres.pool.query(`
-            SELECT ps.id, pi.item_name, ps.sale_price, ps.quantity, ps.marketplace,
+            SELECT ps.id, pi.item_name, ps.sale_price, ps.quantity_sold, ps.marketplace,
                    ps.profit_loss, ps.roi_percent, ps.created_at, 'sale' as type
             FROM portfolio_sales ps
             JOIN portfolio_investments pi ON ps.investment_id = pi.id
