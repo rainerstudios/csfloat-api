@@ -26,6 +26,7 @@
     "socket.io": "^2.4.0",
     "steam-totp": "^2.1.2",
     "steam-user": "^5.2.0",
+    "uuid": "^13.0.0",
     "winston": "^2.4.5"
   },
   "devDependencies": {

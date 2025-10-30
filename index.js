@@ -2810,7 +2810,7 @@ app.post('/api/portfolio/snapshot/create/:userId', async (req, res) => {
         }
 
         // Get all investments for user
-        const investments = await postgres.query(
+        const investments = await postgres.pool.query(
             'SELECT * FROM portfolio_investments WHERE user_id = $1 AND is_sold = false',
             [userId]
         );
@@ -2847,7 +2847,7 @@ app.post('/api/portfolio/snapshot/create/:userId', async (req, res) => {
         }
 
         // Get realized profit from sales
-        const salesResult = await postgres.query(
+        const salesResult = await postgres.pool.query(
             'SELECT COALESCE(SUM(profit_loss), 0) as realized FROM portfolio_sales WHERE user_id = $1',
             [userId]
         );
@@ -2869,7 +2869,7 @@ app.post('/api/portfolio/snapshot/create/:userId', async (req, res) => {
         }
 
         // Insert snapshot (will update if exists due to unique constraint)
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             INSERT INTO portfolio_snapshots (
                 user_id, snapshot_date, granularity,
                 total_value, total_invested, realized_profit, unrealized_profit,
@@ -2940,7 +2940,7 @@ app.get('/api/portfolio/snapshot/history/:userId', async (req, res) => {
             date.setFullYear(date.getFullYear() - amount);
         }
 
-        const snapshots = await postgres.query(`
+        const snapshots = await postgres.pool.query(`
             SELECT * FROM portfolio_snapshots
             WHERE user_id = $1
             AND granularity = $2
@@ -2975,7 +2975,7 @@ app.get('/api/portfolio/chart/:userId', async (req, res) => {
         const date = new Date();
         date.setDate(date.getDate() - days);
 
-        const snapshots = await postgres.query(`
+        const snapshots = await postgres.pool.query(`
             SELECT
                 snapshot_date,
                 total_value,
@@ -3043,7 +3043,7 @@ app.post('/api/portfolio/sale/partial', async (req, res) => {
         }
 
         // Get investment
-        const invResult = await postgres.query(
+        const invResult = await postgres.pool.query(
             'SELECT * FROM portfolio_investments WHERE id = $1',
             [investment_id]
         );
@@ -3075,7 +3075,7 @@ app.post('/api/portfolio/sale/partial', async (req, res) => {
         const roiPercent = buyPricePerUnit > 0 ? (profitLoss / (buyPricePerUnit * soldQuantity)) * 100 : 0;
 
         // Record sale
-        const saleResult = await postgres.query(`
+        const saleResult = await postgres.pool.query(`
             INSERT INTO portfolio_sales (
                 investment_id, user_id, item_name, item_skin_name,
                 item_condition, item_variant, quantity_sold,
@@ -3106,12 +3106,12 @@ app.post('/api/portfolio/sale/partial', async (req, res) => {
         // Update investment quantity
         const remainingQuantity = currentQuantity - soldQuantity;
         if (remainingQuantity === 0) {
-            await postgres.query(
+            await postgres.pool.query(
                 'UPDATE portfolio_investments SET quantity = 0, is_sold = true WHERE id = $1',
                 [investment_id]
             );
         } else {
-            await postgres.query(
+            await postgres.pool.query(
                 'UPDATE portfolio_investments SET quantity = $1 WHERE id = $2',
                 [remainingQuantity, investment_id]
             );
@@ -3139,7 +3139,7 @@ app.get('/api/portfolio/pnl/:userId', async (req, res) => {
         const type = req.query.type || 'total'; // realized, unrealized, or total
 
         // Get realized P&L from sales
-        const salesResult = await postgres.query(`
+        const salesResult = await postgres.pool.query(`
             SELECT
                 COALESCE(SUM(profit_loss), 0) as realized_profit,
                 COALESCE(SUM(quantity_sold), 0) as total_sold,
@@ -3155,7 +3155,7 @@ app.get('/api/portfolio/pnl/:userId', async (req, res) => {
         };
 
         // Get unrealized P&L from current holdings
-        const investments = await postgres.query(`
+        const investments = await postgres.pool.query(`
             SELECT * FROM portfolio_investments
             WHERE user_id = $1 AND is_sold = false
         `, [userId]);
@@ -3228,7 +3228,7 @@ app.patch('/api/portfolio/investment/:investmentId/price-override', async (req, 
             });
         }
 
-        const result = await postgres.query(
+        const result = await postgres.pool.query(
             'UPDATE portfolio_investments SET price_override = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
             [price_override, investmentId]
         );
@@ -3267,7 +3267,7 @@ app.patch('/api/portfolio/investment/:investmentId/marketplace-override', async 
             });
         }
 
-        const result = await postgres.query(
+        const result = await postgres.pool.query(
             'UPDATE portfolio_investments SET marketplace_override = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
             [marketplace_override, investmentId]
         );
@@ -3297,14 +3297,14 @@ app.get('/api/user/settings/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
 
-        let result = await postgres.query(
+        let result = await postgres.pool.query(
             'SELECT * FROM user_settings WHERE user_id = $1',
             [userId]
         );
 
         if (result.rows.length === 0) {
             // Create default settings
-            result = await postgres.query(`
+            result = await postgres.pool.query(`
                 INSERT INTO user_settings (user_id) VALUES ($1) RETURNING *
             `, [userId]);
         }
@@ -3374,11 +3374,11 @@ app.patch('/api/user/settings/:userId', async (req, res) => {
             RETURNING *
         `;
 
-        let result = await postgres.query(query, values);
+        let result = await postgres.pool.query(query, values);
 
         if (result.rows.length === 0) {
             // Create if doesn't exist
-            result = await postgres.query(`
+            result = await postgres.pool.query(`
                 INSERT INTO user_settings (user_id, marketplace_priority, timezone, currency, auto_snapshot, snapshot_frequency)
                 VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING *
@@ -3429,7 +3429,7 @@ app.post('/api/auth/create-key', async (req, res) => {
         const expiresAt = expires_in_days ?
             new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000) : null;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             INSERT INTO api_keys (
                 user_id, api_key, key_name, permissions, rate_limit, expires_at
             ) VALUES ($1, $2, $3, $4, $5, $6)
@@ -3462,7 +3462,7 @@ app.get('/api/auth/keys/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             SELECT id, user_id, key_name, permissions, rate_limit,
                    is_active, last_used_at, created_at, expires_at,
                    CONCAT(SUBSTRING(api_key, 1, 15), '...') as api_key_preview
@@ -3490,7 +3490,7 @@ app.delete('/api/auth/keys/:keyId', async (req, res) => {
     try {
         const { keyId } = req.params;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             UPDATE api_keys
             SET is_active = false
             WHERE id = $1
@@ -3547,7 +3547,7 @@ app.post('/api/webhooks/discord/configure/:userId', async (req, res) => {
             });
         }
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             INSERT INTO discord_webhooks (
                 user_id, webhook_url, webhook_name, alert_types
             ) VALUES ($1, $2, $3, $4)
@@ -3584,7 +3584,7 @@ app.post('/api/webhooks/discord/test/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             SELECT webhook_url FROM discord_webhooks
             WHERE user_id = $1 AND enabled = true
             LIMIT 1
@@ -3620,7 +3620,7 @@ app.get('/api/webhooks/discord/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             SELECT id, user_id, webhook_name, alert_types, enabled, created_at, updated_at
             FROM discord_webhooks
             WHERE user_id = $1
@@ -3646,7 +3646,7 @@ app.delete('/api/webhooks/discord/:webhookId', async (req, res) => {
     try {
         const { webhookId } = req.params;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             DELETE FROM discord_webhooks
             WHERE id = $1
             RETURNING id, webhook_name
@@ -3697,7 +3697,7 @@ app.post('/api/alerts/create', async (req, res) => {
             });
         }
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             INSERT INTO price_alerts (
                 user_id, item_name, target_price, condition, marketplace
             ) VALUES ($1, $2, $3, $4, $5)
@@ -3735,7 +3735,7 @@ app.get('/api/alerts/:userId', async (req, res) => {
 
         query += ' ORDER BY created_at DESC';
 
-        const result = await postgres.query(query, [userId]);
+        const result = await postgres.pool.query(query, [userId]);
 
         res.json({
             success: true,
@@ -3756,7 +3756,7 @@ app.delete('/api/alerts/:alertId', async (req, res) => {
     try {
         const { alertId } = req.params;
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             DELETE FROM price_alerts
             WHERE id = $1
             RETURNING id, item_name, target_price
@@ -3839,7 +3839,7 @@ app.post('/api/prices/detect-changes', async (req, res) => {
 
         // Send Discord notifications for significant changes
         for (const change of changes.slice(0, 10)) {
-            const webhooks = await postgres.query(`
+            const webhooks = await postgres.pool.query(`
                 SELECT webhook_url FROM discord_webhooks
                 WHERE enabled = true
                 AND 'price_change' = ANY(alert_types)
@@ -3875,7 +3875,7 @@ app.get('/api/prices/multi-market/:itemName', async (req, res) => {
     try {
         const itemName = decodeURIComponent(req.params.itemName);
 
-        const result = await postgres.query(`
+        const result = await postgres.pool.query(`
             SELECT marketplace, price, last_24h, last_7d, last_30d,
                    starting_at, highest_order, updated_at
             FROM marketplace_prices

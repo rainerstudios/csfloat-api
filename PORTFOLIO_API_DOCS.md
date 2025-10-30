@@ -1,6 +1,6 @@
 # CS2 Float Checker - Complete API Documentation
 
-**Version:** 1.1.0
+**Version:** 1.3.0
 **Base URL:** `http://localhost:3002` (Production: `https://api.cs2floatchecker.com`)
 **Last Updated:** October 30, 2025
 
@@ -2676,6 +2676,521 @@ Update user preferences.
 
 ---
 
+## Authentication Endpoints
+
+### Create API Key
+
+Generate a new API key for programmatic access.
+
+**Endpoint:** `POST /api/auth/create-key`
+
+**Request Body:**
+```json
+{
+  "user_id": "steam_76561198012345678",
+  "key_name": "My Application",
+  "permissions": ["read", "write"],
+  "rate_limit": 1000,
+  "expires_in_days": 365
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "API key created successfully",
+  "api_key": {
+    "id": 1,
+    "user_id": "steam_76561198012345678",
+    "api_key": "csfloat_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2",
+    "key_name": "My Application",
+    "permissions": ["read", "write"],
+    "rate_limit": 1000,
+    "is_active": true,
+    "created_at": "2025-10-30T14:00:00Z",
+    "expires_at": "2026-10-30T14:00:00Z"
+  }
+}
+```
+
+**Using API Key:**
+```bash
+# In header
+curl -H "X-API-Key: csfloat_a1b2c3..." http://localhost:3002/api/portfolio/user123
+
+# In query parameter
+curl "http://localhost:3002/api/portfolio/user123?api_key=csfloat_a1b2c3..."
+
+# As Bearer token
+curl -H "Authorization: Bearer csfloat_a1b2c3..." http://localhost:3002/api/portfolio/user123
+```
+
+---
+
+### List API Keys
+
+Get all API keys for a user.
+
+**Endpoint:** `GET /api/auth/keys/:userId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 2,
+  "keys": [
+    {
+      "id": 1,
+      "user_id": "steam_76561198012345678",
+      "api_key_preview": "csfloat_a1b2c3d...",
+      "key_name": "My Application",
+      "permissions": ["read", "write"],
+      "rate_limit": 1000,
+      "is_active": true,
+      "last_used_at": "2025-10-30T15:30:00Z",
+      "created_at": "2025-10-30T14:00:00Z",
+      "expires_at": "2026-10-30T14:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### Revoke API Key
+
+Disable an API key.
+
+**Endpoint:** `DELETE /api/auth/keys/:keyId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "API key revoked",
+  "key": {
+    "id": 1,
+    "key_name": "My Application",
+    "is_active": false
+  }
+}
+```
+
+---
+
+## Discord Webhook Endpoints
+
+### Configure Discord Webhook
+
+Setup Discord notifications with automatic webhook testing.
+
+**Endpoint:** `POST /api/webhooks/discord/configure/:userId`
+
+**Request Body:**
+```json
+{
+  "webhook_url": "https://discord.com/api/webhooks/1234567890/abcdefghijk",
+  "webhook_name": "CS2 Investment Alerts",
+  "alert_types": ["price_alert", "portfolio_milestone", "snapshot_created", "price_change"]
+}
+```
+
+**Alert Types:**
+- `price_alert` - When price alerts are triggered
+- `portfolio_milestone` - Portfolio reaches $10k, $50k, $100k, etc.
+- `snapshot_created` - Daily/hourly snapshots
+- `price_change` - Significant price movements (>5%)
+- `investment_added` - New investment added
+- `sale_completed` - Item sold
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Discord webhook configured and tested successfully",
+  "webhook": {
+    "id": 1,
+    "user_id": "testuser123",
+    "webhook_url": "https://discord.com/api/webhooks/...",
+    "webhook_name": "CS2 Investment Alerts",
+    "enabled": true,
+    "alert_types": ["price_alert", "portfolio_milestone", "snapshot_created"],
+    "created_at": "2025-10-30T14:00:00Z"
+  }
+}
+```
+
+---
+
+### Test Discord Webhook
+
+Send a test message to verify webhook is working.
+
+**Endpoint:** `POST /api/webhooks/discord/test/:userId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Test message sent successfully"
+}
+```
+
+**Discord Test Message:**
+```
+✅ Webhook Test
+Your Discord webhook is configured correctly!
+
+Status: Connected
+Service: CSFloat Investment Tracker
+```
+
+---
+
+### List Webhooks
+
+Get all Discord webhooks for a user.
+
+**Endpoint:** `GET /api/webhooks/discord/:userId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 1,
+  "webhooks": [
+    {
+      "id": 1,
+      "user_id": "testuser123",
+      "webhook_name": "CS2 Investment Alerts",
+      "alert_types": ["price_alert", "portfolio_milestone"],
+      "enabled": true,
+      "created_at": "2025-10-30T14:00:00Z",
+      "updated_at": "2025-10-30T14:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### Delete Webhook
+
+Remove a Discord webhook.
+
+**Endpoint:** `DELETE /api/webhooks/discord/:webhookId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Webhook deleted",
+  "webhook": {
+    "id": 1,
+    "webhook_name": "CS2 Investment Alerts"
+  }
+}
+```
+
+---
+
+## Price Alert Endpoints
+
+### Create Price Alert
+
+Set up an alert when an item reaches a target price.
+
+**Endpoint:** `POST /api/alerts/create`
+
+**Request Body:**
+```json
+{
+  "user_id": "testuser123",
+  "item_name": "AK-47 | Redline (Field-Tested)",
+  "target_price": 15.00,
+  "condition": "below",
+  "marketplace": "steam"
+}
+```
+
+**Conditions:**
+- `above` - Alert when price goes above target
+- `below` - Alert when price goes below target
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Price alert created",
+  "alert": {
+    "id": 1,
+    "user_id": "testuser123",
+    "item_name": "AK-47 | Redline (Field-Tested)",
+    "target_price": 15.00,
+    "condition": "below",
+    "marketplace": "steam",
+    "is_active": true,
+    "created_at": "2025-10-30T14:00:00Z"
+  }
+}
+```
+
+**Discord Notification When Triggered:**
+```
+📉 Price Alert: AK-47 | Redline (Field-Tested)
+Your price alert has been triggered!
+
+Current Price: $14.50
+Target Price: $15.00
+Condition: Price is below target
+```
+
+---
+
+### List Price Alerts
+
+Get all price alerts for a user.
+
+**Endpoint:** `GET /api/alerts/:userId?active_only=true`
+
+**Query Parameters:**
+- `active_only` - Filter to active alerts only (default: true)
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 3,
+  "alerts": [
+    {
+      "id": 1,
+      "user_id": "testuser123",
+      "item_name": "AK-47 | Redline (Field-Tested)",
+      "target_price": 15.00,
+      "condition": "below",
+      "marketplace": "steam",
+      "is_active": true,
+      "triggered_at": null,
+      "created_at": "2025-10-30T14:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### Delete Price Alert
+
+Remove a price alert.
+
+**Endpoint:** `DELETE /api/alerts/:alertId`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Alert deleted",
+  "alert": {
+    "id": 1,
+    "item_name": "AK-47 | Redline (Field-Tested)",
+    "target_price": 15.00
+  }
+}
+```
+
+---
+
+## Batch Price Update Endpoints
+
+### Update All Marketplace Prices
+
+Fetch latest prices from CSGOTrader API (FREE, no rate limits).
+
+**Endpoint:** `POST /api/prices/update-all`
+
+**Request Body (Optional):**
+```json
+{
+  "marketplaces": ["steam", "csfloat", "skinport", "buff163"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Price update completed",
+  "runId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "startTime": "2025-10-30T14:00:00Z",
+  "endTime": "2025-10-30T14:05:30Z",
+  "duration": 330000,
+  "marketplaces": {
+    "steam": {
+      "success": true,
+      "inserted": 1234,
+      "updated": 45678,
+      "errors": 0,
+      "total": 46912
+    },
+    "csfloat": {
+      "success": true,
+      "inserted": 567,
+      "updated": 23456,
+      "errors": 2,
+      "total": 24023
+    },
+    "skinport": {
+      "success": true,
+      "inserted": 890,
+      "updated": 12345,
+      "errors": 1,
+      "total": 13235
+    },
+    "buff163": {
+      "success": true,
+      "inserted": 234,
+      "updated": 34567,
+      "errors": 0,
+      "total": 34801
+    }
+  },
+  "cleanedUp": 123
+}
+```
+
+**Data Sources:**
+- Steam: `https://prices.csgotrader.app/latest/steam.json`
+- CSFloat: `https://prices.csgotrader.app/latest/csfloat.json`
+- Skinport: `https://prices.csgotrader.app/latest/skinport.json`
+- Buff163: `https://prices.csgotrader.app/latest/buff163.json`
+
+**Note:** This is a **FREE** API (static JSON files on GitHub). No API key or rate limits!
+
+---
+
+### Check Price Update Status
+
+Get status of marketplace price data.
+
+**Endpoint:** `GET /api/prices/update-status`
+
+**Response:**
+```json
+{
+  "success": true,
+  "marketplaces": [
+    {
+      "marketplace": "steam",
+      "item_count": 46912,
+      "last_updated": "2025-10-30T14:05:30Z",
+      "oldest_update": "2025-10-30T14:00:00Z"
+    },
+    {
+      "marketplace": "csfloat",
+      "item_count": 24023,
+      "last_updated": "2025-10-30T14:04:15Z",
+      "oldest_update": "2025-10-30T14:01:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### Detect Price Changes
+
+Find significant price movements and send Discord notifications.
+
+**Endpoint:** `POST /api/prices/detect-changes`
+
+**Request Body:**
+```json
+{
+  "threshold": 5
+}
+```
+
+**Parameters:**
+- `threshold` - Minimum percentage change to detect (default: 5%)
+
+**Response:**
+```json
+{
+  "success": true,
+  "changes_detected": 127,
+  "significant_changes": [
+    {
+      "item_name": "AK-47 | Redline (Field-Tested)",
+      "marketplace": "steam",
+      "old_price": 20.00,
+      "new_price": 22.50,
+      "change_percent": 12.50
+    },
+    {
+      "item_name": "AWP | Asiimov (Field-Tested)",
+      "marketplace": "buff163",
+      "old_price": 80.00,
+      "new_price": 72.00,
+      "change_percent": -10.00
+    }
+  ]
+}
+```
+
+**Automatic Discord Notifications:**
+Top 10 price changes are automatically sent to users with Discord webhooks configured.
+
+---
+
+### Get Multi-Market Prices
+
+Get prices for an item from all marketplaces.
+
+**Endpoint:** `GET /api/prices/multi-market/:itemName`
+
+**Response:**
+```json
+{
+  "success": true,
+  "item_name": "AK-47 | Redline (Field-Tested)",
+  "count": 4,
+  "prices": [
+    {
+      "marketplace": "steam",
+      "price": 20.50,
+      "last_24h": 20.30,
+      "last_7d": 19.80,
+      "last_30d": 19.50,
+      "starting_at": {
+        "price": 20.50,
+        "volume": 1234
+      },
+      "highest_order": {
+        "price": 19.80,
+        "volume": 567
+      },
+      "updated_at": "2025-10-30T14:05:30Z"
+    },
+    {
+      "marketplace": "buff163",
+      "price": 18.75,
+      "last_24h": 18.90,
+      "last_7d": 18.20,
+      "last_30d": 17.80,
+      "updated_at": "2025-10-30T14:04:15Z"
+    }
+  ]
+}
+```
+
+**Use Cases:**
+- Find best marketplace to buy/sell
+- Arbitrage opportunities
+- Price comparison
+
+---
+
 ## Rate Limiting
 
 **Current Status:** No rate limiting implemented
@@ -2687,6 +3202,61 @@ Update user preferences.
 ---
 
 ## Changelog
+
+### Version 1.3.0 (October 30, 2025) - Backend Features Complete Edition
+**17 new endpoints added** (total: 50 endpoints)
+
+#### Authentication System (3 new endpoints)
+- ✅ API key generation with `csfloat_{64_hex}` format
+- ✅ List all user API keys with usage tracking
+- ✅ Revoke/disable API keys
+- ✅ Three authentication methods: Header, Query Parameter, Bearer Token
+- ✅ Permission-based access control (read/write)
+- ✅ Rate limiting per API key (configurable)
+- ✅ Expiration date support
+- ✅ Last used tracking
+
+#### Discord Webhook Integration (4 new endpoints)
+- ✅ Configure Discord webhooks with automatic testing
+- ✅ Test webhook connectivity
+- ✅ List all webhooks for a user
+- ✅ Delete webhooks
+- ✅ Rich embed notifications for all alert types
+- ✅ 6 alert types: price_alert, portfolio_milestone, snapshot_created, price_change, investment_added, sale_completed
+- ✅ Color-coded messages (green/red/yellow based on context)
+- ✅ Milestone tracking ($10k, $50k, $100k portfolio value)
+
+#### Price Alert System (3 new endpoints)
+- ✅ Create price alerts (above/below conditions)
+- ✅ List active/all price alerts
+- ✅ Delete price alerts
+- ✅ Automatic Discord notifications when triggered
+- ✅ Multi-marketplace support
+- ✅ Real-time trigger detection
+
+#### Batch Price Updates (4 new endpoints + 1 enhanced)
+- ✅ Update all marketplace prices from CSGOTrader API (FREE)
+- ✅ Check price update status
+- ✅ Detect significant price changes (configurable threshold)
+- ✅ Get multi-market prices for comparison
+- ✅ Automatic Discord notifications for top 10 price changes
+- ✅ 4 marketplaces: Steam, CSFloat, Skinport, Buff163
+- ✅ Historical price tracking (24h, 7d, 30d, 90d)
+- ✅ Starting price and highest order tracking
+
+#### Database Enhancements
+- New `api_keys` table with permission system
+- New `api_usage_logs` table for tracking
+- New `discord_webhooks` table
+- New `price_alerts` table
+- New `marketplace_prices` table (multi-marketplace)
+- New `price_change_tracking` table
+- Added `generate_api_key()` PostgreSQL function
+
+#### Libraries Added
+- `/lib/auth.js` - Authentication system (200+ lines)
+- `/lib/discord.js` - Discord webhook integration (350+ lines)
+- `/lib/csgotrader.js` - CSGOTrader API integration (300+ lines)
 
 ### Version 1.2.0 (October 30, 2025) - Advanced Features Edition
 **20 new endpoints added** (total: 33 endpoints)
@@ -2755,13 +3325,13 @@ Update user preferences.
 - Database schema with 6 tables
 
 ### Planned Features (v2.0.0)
-- Automated portfolio snapshots (cron jobs)
-- Email/webhook notifications for price changes (Discord integration)
-- Batch price updates from CSGOTrader API
+- Automated portfolio snapshots via cron jobs
 - More pattern detection (Fade %, Crimson Web)
 - WebSocket support for real-time updates
 - Steam OAuth authentication
 - Steam inventory sync
+- Mobile app support (API ready)
+- Email notifications (currently Discord only)
 
 ---
 
