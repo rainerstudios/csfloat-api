@@ -1179,7 +1179,7 @@ CREATE TABLE portfolio_sales (
     investment_id INTEGER REFERENCES portfolio_investments(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL,
 
-    quantity INTEGER NOT NULL,
+    quantity_sold INTEGER NOT NULL,
     sale_price DECIMAL(10,2) NOT NULL,
     sale_date TIMESTAMP DEFAULT NOW(),
     marketplace TEXT,
@@ -1189,7 +1189,8 @@ CREATE TABLE portfolio_sales (
     roi_percent DECIMAL(5,2),
 
     notes TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    remaining_quantity INTEGER
 );
 ```
 
