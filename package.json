@@ -20,6 +20,7 @@
     "globaloffensive": "^3.2.0",
     "long": "^3.2.0",
     "mongodb": "^2.2.36",
+    "node-fetch": "^2.7.0",
     "pg": "^8.10.0",
     "simple-vdf": "^1.1.1",
     "socket.io": "^2.4.0",

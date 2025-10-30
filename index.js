@@ -2470,6 +2470,327 @@ function calculateDiversityScore(itemTypes, totalItems) {
 
 winston.info('Portfolio endpoints loaded successfully');
 
+// =====================================================================
+// CSGO-API INTEGRATION ENDPOINTS
+// =====================================================================
+
+const csgoAPI = require('./lib/csgoapi');
+
+// Get float range for an item
+app.get('/api/items/float-range/:itemName', async (req, res) => {
+    try {
+        const itemName = decodeURIComponent(req.params.itemName);
+        const floatData = await csgoAPI.getFloatRange(itemName);
+
+        if (!floatData) {
+            return res.status(404).json({
+                error: 'Item not found',
+                item_name: itemName
+            });
+        }
+
+        res.json({
+            success: true,
+            data: floatData
+        });
+    } catch (error) {
+        winston.error('Float range lookup error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch float range',
+            message: error.message
+        });
+    }
+});
+
+// Get doppler phase by paint index
+app.get('/api/items/doppler-phase/:paintIndex', (req, res) => {
+    try {
+        const paintIndex = req.params.paintIndex;
+        const dopplerInfo = csgoAPI.getDopplerPhase(paintIndex);
+
+        if (!dopplerInfo) {
+            return res.status(404).json({
+                error: 'Not a doppler phase',
+                paint_index: paintIndex
+            });
+        }
+
+        res.json({
+            success: true,
+            data: dopplerInfo
+        });
+    } catch (error) {
+        winston.error('Doppler phase lookup error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch doppler phase',
+            message: error.message
+        });
+    }
+});
+
+// Get complete item metadata
+app.get('/api/items/metadata/:itemName', async (req, res) => {
+    try {
+        const itemName = decodeURIComponent(req.params.itemName);
+        const metadata = await csgoAPI.getItemMetadata(itemName);
+
+        if (!metadata) {
+            return res.status(404).json({
+                error: 'Item not found',
+                item_name: itemName
+            });
+        }
+
+        res.json({
+            success: true,
+            data: metadata
+        });
+    } catch (error) {
+        winston.error('Item metadata lookup error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch item metadata',
+            message: error.message
+        });
+    }
+});
+
+// Search items
+app.get('/api/items/search', async (req, res) => {
+    try {
+        const query = req.query.q || req.query.query;
+        const limit = parseInt(req.query.limit) || 20;
+
+        if (!query) {
+            return res.status(400).json({
+                error: 'Missing search query',
+                message: 'Provide ?q=query parameter'
+            });
+        }
+
+        const results = await csgoAPI.searchItems(query, limit);
+
+        res.json({
+            success: true,
+            query,
+            count: results.length,
+            results
+        });
+    } catch (error) {
+        winston.error('Item search error:', error);
+        res.status(500).json({
+            error: 'Failed to search items',
+            message: error.message
+        });
+    }
+});
+
+// Get case contents
+app.get('/api/items/case/:caseName', async (req, res) => {
+    try {
+        const caseName = decodeURIComponent(req.params.caseName);
+        const caseData = await csgoAPI.getCaseContents(caseName);
+
+        if (!caseData) {
+            return res.status(404).json({
+                error: 'Case not found',
+                case_name: caseName
+            });
+        }
+
+        res.json({
+            success: true,
+            data: caseData
+        });
+    } catch (error) {
+        winston.error('Case lookup error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch case contents',
+            message: error.message
+        });
+    }
+});
+
+// Get cache status
+app.get('/api/items/cache/status', async (req, res) => {
+    try {
+        const status = await csgoAPI.getCacheStatus();
+        res.json(status);
+    } catch (error) {
+        winston.error('Cache status error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Clear cache (admin endpoint)
+app.post('/api/items/cache/clear', async (req, res) => {
+    try {
+        const result = await csgoAPI.clearCache();
+        res.json(result);
+    } catch (error) {
+        winston.error('Cache clear error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+winston.info('CSGO-API integration endpoints loaded');
+
+// =====================================================================
+// STEAM FEE CALCULATION ENDPOINTS
+// =====================================================================
+
+const steamFees = require('./lib/steam-fees');
+
+// Calculate what seller receives from buyer's payment
+app.post('/api/pricing/seller-receives', (req, res) => {
+    try {
+        const { buyer_price } = req.body;
+
+        if (!buyer_price || isNaN(buyer_price)) {
+            return res.status(400).json({
+                error: 'Invalid buyer_price',
+                message: 'Provide buyer_price as a number'
+            });
+        }
+
+        const validation = steamFees.validatePrice(buyer_price);
+        if (!validation.valid) {
+            return res.status(400).json({
+                error: 'Invalid price',
+                message: validation.message
+            });
+        }
+
+        const result = steamFees.calculateSellerReceives(buyer_price);
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        winston.error('Seller receives calculation error:', error);
+        res.status(500).json({
+            error: 'Failed to calculate seller amount',
+            message: error.message
+        });
+    }
+});
+
+// Calculate what buyer needs to pay for seller to receive target amount
+app.post('/api/pricing/buyer-price', (req, res) => {
+    try {
+        const { seller_amount } = req.body;
+
+        if (!seller_amount || isNaN(seller_amount)) {
+            return res.status(400).json({
+                error: 'Invalid seller_amount',
+                message: 'Provide seller_amount as a number'
+            });
+        }
+
+        const validation = steamFees.validatePrice(seller_amount);
+        if (!validation.valid) {
+            return res.status(400).json({
+                error: 'Invalid price',
+                message: validation.message
+            });
+        }
+
+        const result = steamFees.calculateBuyerPrice(seller_amount);
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        winston.error('Buyer price calculation error:', error);
+        res.status(500).json({
+            error: 'Failed to calculate buyer price',
+            message: error.message
+        });
+    }
+});
+
+// Get detailed fee breakdown
+app.post('/api/pricing/fee-breakdown', (req, res) => {
+    try {
+        const { buyer_price } = req.body;
+
+        if (!buyer_price || isNaN(buyer_price)) {
+            return res.status(400).json({
+                error: 'Invalid buyer_price',
+                message: 'Provide buyer_price as a number'
+            });
+        }
+
+        const result = steamFees.getFeeBreakdown(buyer_price);
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        winston.error('Fee breakdown calculation error:', error);
+        res.status(500).json({
+            error: 'Failed to calculate fee breakdown',
+            message: error.message
+        });
+    }
+});
+
+// Calculate profit after fees
+app.post('/api/pricing/calculate-profit', (req, res) => {
+    try {
+        const { buy_price, current_market_price } = req.body;
+
+        if (!buy_price || isNaN(buy_price) || !current_market_price || isNaN(current_market_price)) {
+            return res.status(400).json({
+                error: 'Invalid parameters',
+                message: 'Provide buy_price and current_market_price as numbers'
+            });
+        }
+
+        const result = steamFees.calculateProfit(buy_price, current_market_price);
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        winston.error('Profit calculation error:', error);
+        res.status(500).json({
+            error: 'Failed to calculate profit',
+            message: error.message
+        });
+    }
+});
+
+// Get fee examples
+app.get('/api/pricing/fee-examples', (req, res) => {
+    try {
+        const examples = steamFees.getFeeExamples();
+
+        res.json({
+            success: true,
+            examples,
+            note: 'Steam fees scale from 10% to 13.05% based on price'
+        });
+    } catch (error) {
+        winston.error('Fee examples error:', error);
+        res.status(500).json({
+            error: 'Failed to get fee examples',
+            message: error.message
+        });
+    }
+});
+
+winston.info('Steam fee calculation endpoints loaded');
+
 // Helper function to calculate trade risk
 function calculateTradeRisk(history) {
     if (!history || history.length === 0) {

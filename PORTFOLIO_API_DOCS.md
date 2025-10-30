@@ -1,17 +1,484 @@
-# Portfolio Tracking API Documentation
+# CS2 Float Checker - Complete API Documentation
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Base URL:** `http://localhost:3002` (Production: `https://api.cs2floatchecker.com`)
 **Last Updated:** October 30, 2025
 
 ## Overview
 
-The Portfolio Tracking API provides endpoints for managing CS2 skin investments, tracking profits/losses, calculating investment scores, and analyzing portfolio performance. This API integrates seamlessly with the existing CSFloat API infrastructure.
+Complete API documentation for the CS2 Float Checker system, covering:
+- **Float Inspection** - Steam item float value inspection and caching
+- **Multi-Market Pricing** - Buff163, Skinport, CSFloat, CS.MONEY, Steam pricing
+- **Portfolio Tracking** - Investment management and analytics
+- **Batch Processing** - Bulk operations for float checks and pricing
+- **Trade Protection** - Ownership history tracking
 
 ## Table of Contents
 
-1. [Authentication](#authentication)
-2. [Endpoints](#endpoints)
+### Core CSFloat API
+1. [Float Inspection](#float-inspection-endpoints)
+2. [Market Pricing](#market-pricing-endpoints)
+3. [Batch Operations](#batch-operations-endpoints)
+4. [Trade Protection](#trade-protection-endpoints)
+5. [System Status](#system-status)
+
+### Portfolio API
+6. [Portfolio Management](#portfolio-management-endpoints)
+7. [Portfolio Analytics](#portfolio-analytics-endpoints)
+8. [Investment Scoring](#investment-scoring-endpoints)
+
+### Reference
+9. [Authentication](#authentication)
+10. [Error Handling](#error-handling)
+11. [Data Models](#data-models)
+
+---
+
+## Float Inspection Endpoints
+
+### 1. Single Float Inspection
+
+Inspect a single CS2 item to get float value, pattern seed, and sticker data.
+
+**Endpoint:** `GET /?url={inspectUrl}` or `GET /?a={a}&d={d}&s={s}`
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes* | Full Steam inspect URL |
+| `a` | string | Yes* | Asset ID (alternative to url) |
+| `d` | string | Yes* | D parameter (alternative to url) |
+| `s` | string | Yes** | S parameter (alternative to url) |
+| `m` | string | Yes** | M parameter (alternative to url) |
+
+*Use either `url` OR `a`/`d`/`s`/`m` parameters
+**Use either `s` OR `m` parameter
+
+#### Response (Success)
+
+```json
+{
+  "iteminfo": {
+    "accountid": null,
+    "itemid": "29195031916",
+    "defindex": 7,
+    "paintindex": 282,
+    "rarity": 6,
+    "quality": 4,
+    "killeaterscoretype": null,
+    "killeatervalue": null,
+    "customname": null,
+    "stickers": [],
+    "inventory": 0,
+    "origin": 8,
+    "questid": null,
+    "dropreason": 0,
+    "musicindex": null,
+    "entindex": null,
+    "min": 0.06,
+    "max": 0.8,
+    "weapon_type": "Rifle",
+    "item_name": "AK-47",
+    "rarity_name": "Covert",
+    "quality_name": "Unique",
+    "origin_name": "Found in Crate",
+    "wear_name": "Field-Tested",
+    "full_item_name": "AK-47 | Redline (Field-Tested)",
+    "floatvalue": 0.25436,
+    "paintseed": 742,
+    "imageurl": "https://community.cloudflare.steamstatic.com/economy/image/-9a81...",
+    "floatid": "29195031916",
+    "a": "29195031916",
+    "s": "76561198084749120",
+    "d": "16747013944935990643",
+    "paintwear": 0.25436
+  }
+}
+```
+
+#### Example Requests
+
+```bash
+# Using full URL
+curl "http://localhost:3002/?url=steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198084749120A29195031916D16747013944935990643"
+
+# Using parameters
+curl "http://localhost:3002/?a=29195031916&d=16747013944935990643&s=76561198084749120"
+```
+
+---
+
+### 2. Bulk Float Inspection
+
+Inspect up to 50 items in a single request.
+
+**Endpoint:** `POST /bulk`
+
+#### Request Body
+
+```json
+{
+  "bulk_key": "your_bulk_key",
+  "links": [
+    {
+      "link": "steam://rungame/730/..."
+    },
+    {
+      "link": "steam://rungame/730/..."
+    }
+  ]
+}
+```
+
+#### Response (Success)
+
+```json
+{
+  "results": [
+    {
+      "iteminfo": { ... },
+      "status": "success"
+    },
+    {
+      "error": "Item not found",
+      "status": "error"
+    }
+  ]
+}
+```
+
+---
+
+## Market Pricing Endpoints
+
+### 3. Get Item Price
+
+Get current prices from multiple marketplaces (Buff163, Skinport, CSFloat, CS.MONEY, Steam).
+
+**Endpoint:** `GET /api/price/:marketHashName`
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "name": "AK-47 | Redline (Field-Tested)",
+  "prices": {
+    "buff163": {
+      "price_usd": 42.30,
+      "price_cny": 298.50,
+      "listings": 847,
+      "updated": "2025-10-30T12:00:00.000Z",
+      "url": "https://buff.163.com/market/csgo#tab=selling&search=AK-47%20%7C%20Redline%20..."
+    },
+    "skinport": {
+      "price_usd": 45.99,
+      "price_eur": 42.50,
+      "listings": 32,
+      "updated": "2025-10-30T12:05:00.000Z",
+      "url": "https://skinport.com/market?search=AK-47..."
+    },
+    "csfloat": {
+      "price_usd": 44.50,
+      "listings": 127,
+      "updated": "2025-10-30T12:03:00.000Z",
+      "url": "https://csfloat.com/search?search=AK-47..."
+    },
+    "marketCsgo": {
+      "price_usd": 46.20,
+      "listings": 89,
+      "updated": "2025-10-30T12:02:00.000Z",
+      "url": "https://cs.money/csgo/trade/?search=AK-47..."
+    },
+    "steam": {
+      "price_usd": 48.50,
+      "volume": 234,
+      "updated": "2025-10-30T12:04:00.000Z",
+      "url": "https://steamcommunity.com/market/listings/730/AK-47..."
+    }
+  },
+  "lowestPrice": 42.30,
+  "highestPrice": 48.50,
+  "cached": true
+}
+```
+
+**Cache:** 5-minute TTL
+
+#### Example Request
+
+```bash
+curl "http://localhost:3002/api/price/AK-47%20%7C%20Redline%20(Field-Tested)"
+```
+
+---
+
+### 4. Get Price History
+
+Get historical price data for an item (7, 14, or 30 days).
+
+**Endpoint:** `GET /api/price-history/:marketHashName?timeframe=30`
+
+#### Query Parameters
+
+| Parameter | Type | Default | Options | Description |
+|-----------|------|---------|---------|-------------|
+| `timeframe` | string | '30' | '7', '14', '30' | Number of days of history |
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "name": "AK-47 | Redline (Field-Tested)",
+  "timeframe": "30 days",
+  "markets": [
+    {
+      "name": "Buff163",
+      "type": "marketplace",
+      "prices": [
+        {
+          "date": "2025-10-01T00:00:00.000Z",
+          "price": 38.50,
+          "quantity": 892
+        },
+        {
+          "date": "2025-10-02T00:00:00.000Z",
+          "price": 39.20,
+          "quantity": 847
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### 5. Get Recent Sales
+
+Get recent sales data with float values, patterns, and stickers.
+
+**Endpoint:** `GET /api/recent-sales/:marketHashName`
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "name": "AK-47 | Redline (Field-Tested)",
+  "totalSales": 15,
+  "sales": [
+    {
+      "price": 45.30,
+      "float": 0.234,
+      "pattern": 742,
+      "stickers": [],
+      "date": "2025-10-30T10:23:15.000Z",
+      "market": {
+        "name": "CSFloat Market",
+        "url": "https://csfloat.com/..."
+      }
+    }
+  ],
+  "averagePrice": "44.52"
+}
+```
+
+**Note:** Recent sales are automatically stored in database for float-price correlation analysis.
+
+---
+
+## Batch Operations Endpoints
+
+### 6. Batch Price Check
+
+Check prices for up to 50 items at once.
+
+**Endpoint:** `POST /api/batch/prices`
+
+#### Request Body
+
+```json
+{
+  "items": [
+    "AK-47 | Redline (Field-Tested)",
+    "AWP | Asiimov (Field-Tested)",
+    "M4A4 | Howl (Minimal Wear)"
+  ]
+}
+```
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "total": 3,
+  "successful": 3,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "itemName": "AK-47 | Redline (Field-Tested)",
+      "prices": { ... },
+      "lowestPrice": 42.30,
+      "highestPrice": 48.50,
+      "cached": true
+    }
+  ]
+}
+```
+
+---
+
+### 7. Batch Float Rarity Check
+
+Check float rarity for up to 100 items at once.
+
+**Endpoint:** `POST /api/batch/rarity`
+
+#### Request Body
+
+```json
+{
+  "items": [
+    {
+      "defindex": 7,
+      "paintindex": 282,
+      "floatvalue": 0.25436
+    },
+    {
+      "defindex": 9,
+      "paintindex": 344,
+      "floatvalue": 0.18234
+    }
+  ]
+}
+```
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "total": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "item": { "defindex": 7, "paintindex": 282, "floatvalue": 0.25436 },
+      "rarity": {
+        "floatValue": 0.25436,
+        "rarityScore": 68,
+        "rarityTier": "Rare (Top 32%)",
+        "percentile": 32,
+        "totalSeen": 45892,
+        "betterFloats": 14685,
+        "worseFloats": 31207,
+        "statistics": {
+          "bestFloat": 0.06234,
+          "worstFloat": 0.79832,
+          "avgFloat": 0.35678
+        }
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 8. Batch Float Premium Calculator
+
+Calculate float premiums for up to 50 items at once.
+
+**Endpoint:** `POST /api/batch/float-premium`
+
+#### Request Body
+
+```json
+{
+  "items": [
+    {
+      "marketHashName": "AK-47 | Redline (Field-Tested)",
+      "floatValue": 0.18
+    }
+  ]
+}
+```
+
+---
+
+## Trade Protection Endpoints
+
+### 9. Get Ownership History
+
+Get trade history for an item to detect reversible trades.
+
+**Endpoint:** `GET /api/ownership-history/:floatId`
+
+#### Response (Success)
+
+```json
+{
+  "floatId": "29195031916",
+  "ownershipHistory": [
+    {
+      "owner": "76561198084749120",
+      "date": "2025-10-28T14:30:00.000Z"
+    },
+    {
+      "owner": "76561198012345678",
+      "date": "2025-10-15T10:20:00.000Z"
+    }
+  ],
+  "tradeRisk": {
+    "risk": "HIGH",
+    "message": "⚠️ Item traded within 7 days - REVERSIBLE!",
+    "canReverse": true,
+    "daysRemaining": 5,
+    "lastTradeDate": "2025-10-28T14:30:00.000Z",
+    "reversibleUntil": "2025-11-04T14:30:00.000Z"
+  },
+  "totalOwners": 2
+}
+```
+
+---
+
+## System Status
+
+### 10. Get Bot Status
+
+Check status of Steam bots and queue size.
+
+**Endpoint:** `GET /stats`
+
+#### Response (Success)
+
+```json
+{
+  "bots_online": 4,
+  "bots_total": 4,
+  "queue_size": 12,
+  "queue_concurrency": 4
+}
+```
+
+---
+
+## Portfolio Management Endpoints
+
+### 11. Add Investment
+
+*(See existing Portfolio API documentation below)*
+
+---
+
+## Authentication
    - [Add Investment](#1-add-investment)
    - [Get User Portfolio](#2-get-user-portfolio)
    - [Get Portfolio Statistics](#3-get-portfolio-statistics)
