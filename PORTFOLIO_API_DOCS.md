@@ -1096,6 +1096,361 @@ onMounted(() => {
 
 ---
 
+## Enhanced Portfolio Endpoints
+
+### 7. Get Asset Allocation
+
+Get breakdown of portfolio by item categories (Knives, Rifles, Cases, etc.).
+
+**Endpoint:** `GET /api/portfolio/allocation/:userId`
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "totalValue": 6382.50,
+  "allocation": {
+    "Knives": {
+      "value": 1500.00,
+      "percentage": 23.50
+    },
+    "Rifles": {
+      "value": 4636.50,
+      "percentage": 72.64
+    },
+    "Snipers": {
+      "value": 196.00,
+      "percentage": 3.07
+    },
+    "Cases": {
+      "value": 50.00,
+      "percentage": 0.78
+    }
+  },
+  "categories": ["Cases", "Knives", "Rifles", "Snipers"]
+}
+```
+
+#### Example Request (curl)
+
+```bash
+curl -X GET http://localhost:3002/api/portfolio/allocation/user_12345
+```
+
+---
+
+### 8. Get Portfolio Health Metrics
+
+Calculate portfolio health scores including diversity, risk, and liquidity.
+
+**Endpoint:** `GET /api/portfolio/health/:userId`
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "health": {
+    "overallScore": 6.8,
+    "diversityScore": 7.5,
+    "riskScore": 5.2,
+    "liquidityScore": 8.1
+  },
+  "allocation": {
+    "safe": 1250.00,
+    "risky": 3500.00,
+    "liquid": 4200.00,
+    "safePercentage": 26.32,
+    "riskyPercentage": 73.68,
+    "liquidPercentage": 88.42
+  },
+  "metrics": {
+    "totalCategories": 6,
+    "totalItems": 24,
+    "totalValue": 4750.00,
+    "totalInvested": 4200.00
+  }
+}
+```
+
+#### Health Score Breakdown
+
+| Metric | Description | Calculation |
+|--------|-------------|-------------|
+| **Overall Score** | Combined health (1-10) | Weighted average of all scores |
+| **Diversity Score** | How spread out investments are | Based on number of categories and distribution |
+| **Risk Score** | Portfolio risk level (10 = highest) | Percentage of risky items (knives, blue gems) |
+| **Liquidity Score** | How easily sellable (1-10) | Based on market listings > 100 |
+
+**Safe Items**: Cases, Keys, Stickers, Capsules
+**Risky Items**: Knives, Blue Gems, Rare Patterns
+
+#### Example Request (curl)
+
+```bash
+curl -X GET http://localhost:3002/api/portfolio/health/user_12345
+```
+
+---
+
+### 9. Batch Add Investments
+
+Add multiple investments in a single request (up to 50 items).
+
+**Endpoint:** `POST /api/portfolio/batch/add`
+
+#### Request Body
+
+```json
+{
+  "userId": "user_12345",
+  "investments": [
+    {
+      "itemName": "AK-47 | Redline (Field-Tested)",
+      "purchasePrice": 45.50,
+      "quantity": 3,
+      "marketplace": "Steam"
+    },
+    {
+      "itemName": "AWP | Asiimov (Field-Tested)",
+      "purchasePrice": 98.00,
+      "quantity": 2,
+      "marketplace": "Buff163"
+    }
+  ]
+}
+```
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "total": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "id": 101,
+      "itemName": "AK-47 | Redline (Field-Tested)",
+      "success": true
+    },
+    {
+      "index": 1,
+      "id": 102,
+      "itemName": "AWP | Asiimov (Field-Tested)",
+      "success": true
+    }
+  ]
+}
+```
+
+#### Example Request (curl)
+
+```bash
+curl -X POST http://localhost:3002/api/portfolio/batch/add \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user_12345",
+    "investments": [
+      {"itemName": "AK-47 | Redline (FT)", "purchasePrice": 45.50, "quantity": 3},
+      {"itemName": "AWP | Asiimov (FT)", "purchasePrice": 98.00, "quantity": 2}
+    ]
+  }'
+```
+
+---
+
+### 10. Batch Delete Investments
+
+Delete multiple investments in a single request (up to 100 items).
+
+**Endpoint:** `POST /api/portfolio/batch/delete`
+
+#### Request Body
+
+```json
+{
+  "userId": "user_12345",
+  "investmentIds": [101, 102, 103, 104]
+}
+```
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "deleted": 4,
+  "deletedIds": [101, 102, 103, 104]
+}
+```
+
+---
+
+### 11. Get Recent Activity
+
+Get recent investments and sales activity with pagination.
+
+**Endpoint:** `GET /api/portfolio/activity/:userId?limit=20&offset=0`
+
+#### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | number | 20 | Number of activities to return |
+| `offset` | number | 0 | Pagination offset |
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "activities": [
+    {
+      "id": 7,
+      "item_name": "M4A4 | Howl (Minimal Wear)",
+      "purchase_price": "4500.00",
+      "quantity": 1,
+      "marketplace": "Skinport",
+      "created_at": "2025-10-30T13:27:59.261Z",
+      "type": "investment"
+    },
+    {
+      "id": 1,
+      "item_name": "AK-47 | Redline (Field-Tested)",
+      "sale_price": "52.00",
+      "quantity": 1,
+      "marketplace": "CSFloat",
+      "profit_loss": "6.50",
+      "roi_percent": "14.29",
+      "created_at": "2025-10-30T12:48:45.380Z",
+      "type": "sale"
+    }
+  ],
+  "total": 2,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+---
+
+### 12. Export Portfolio
+
+Export complete portfolio data in JSON or CSV format.
+
+**Endpoint:** `GET /api/portfolio/export/:userId?format=json`
+
+#### Query Parameters
+
+| Parameter | Type | Default | Options | Description |
+|-----------|------|---------|---------|-------------|
+| `format` | string | 'json' | 'json' or 'csv' | Export format |
+
+#### Response (JSON Format)
+
+```json
+{
+  "success": true,
+  "exportDate": "2025-10-30T13:28:49.835Z",
+  "userId": "user_12345",
+  "totalInvestments": 6,
+  "investments": [...]
+}
+```
+
+#### Response (CSV Format)
+
+```csv
+ID,Item Name,Purchase Price,Quantity,Marketplace,Purchase Date,Float Value,Pattern Index,Wear,Investment Score,Pattern Tier,Notes,Is Sold
+7,"M4A4 | Howl (Minimal Wear)",4500.00,1,Skinport,2025-10-30,,,,,,false
+6,"Prisma Case",0.50,100,Steam,2025-10-30,,,,,,false
+```
+
+#### Example Requests
+
+```bash
+# JSON Export
+curl -X GET "http://localhost:3002/api/portfolio/export/user_12345?format=json"
+
+# CSV Export
+curl -X GET "http://localhost:3002/api/portfolio/export/user_12345?format=csv" -o portfolio.csv
+```
+
+---
+
+### 13. Update Investment
+
+Update an existing investment's details.
+
+**Endpoint:** `PATCH /api/portfolio/update/:investmentId`
+
+#### Request Body
+
+```json
+{
+  "purchasePrice": 48.00,
+  "quantity": 2,
+  "marketplace": "CSFloat",
+  "notes": "Updated after price change",
+  "tags": ["blue-gem", "long-term"]
+}
+```
+
+**Note:** Only include fields you want to update. All fields are optional.
+
+#### Response (Success)
+
+```json
+{
+  "success": true,
+  "investment": {
+    "id": 3,
+    "user_id": "user_12345",
+    "item_name": "★ Karambit | Fade (Factory New)",
+    "purchase_price": "48.00",
+    "quantity": 2,
+    "marketplace": "CSFloat",
+    "notes": "Updated after price change",
+    "tags": ["blue-gem", "long-term"],
+    "updated_at": "2025-10-30T14:15:22.123Z"
+  }
+}
+```
+
+#### Example Request (curl)
+
+```bash
+curl -X PATCH http://localhost:3002/api/portfolio/update/3 \
+  -H "Content-Type: application/json" \
+  -d '{"notes": "Great investment!", "tags": ["long-term"]}'
+```
+
+---
+
+## Error Codes Reference
+
+All enhanced endpoints include standardized error codes for better error handling:
+
+| Error Code | HTTP Status | Description |
+|------------|-------------|-------------|
+| `ALLOCATION_ERROR` | 500 | Failed to calculate asset allocation |
+| `HEALTH_CALCULATION_ERROR` | 500 | Failed to calculate portfolio health |
+| `BATCH_ADD_ERROR` | 500 | Batch add operation failed |
+| `BATCH_DELETE_ERROR` | 500 | Batch delete operation failed |
+| `BATCH_LIMIT_EXCEEDED` | 400 | Exceeded max items per batch request |
+| `ACTIVITY_FETCH_ERROR` | 500 | Failed to fetch recent activity |
+| `EXPORT_ERROR` | 500 | Export operation failed |
+| `UPDATE_ERROR` | 500 | Failed to update investment |
+| `INVALID_REQUEST` | 400 | Missing or invalid request parameters |
+| `NO_UPDATES` | 400 | No fields provided to update |
+| `NOT_FOUND` | 404 | Investment not found |
+
+---
+
 ## Testing with Postman
 
 ### Collection Setup
@@ -1139,21 +1494,34 @@ pm.test("Response contains investment ID", function () {
 
 ## Changelog
 
+### Version 1.1.0 (October 30, 2025) - Enhanced Edition
+- **7 new enhanced endpoints** added (total: 13 endpoints)
+- ✅ Asset allocation breakdown by category
+- ✅ Portfolio health metrics (diversity, risk, liquidity scores)
+- ✅ Batch operations (add up to 50, delete up to 100 items)
+- ✅ Recent activity tracking with pagination
+- ✅ Export functionality (CSV/JSON)
+- ✅ Update investment endpoint
+- Error code standardization across all endpoints
+- Inspired by SkinWatch and SkinVault patterns
+- Item categorization system (11 categories: Knives, Rifles, Snipers, Pistols, SMGs, Heavy, Cases, Keys, Stickers, Capsules, Agents, Other)
+
 ### Version 1.0.0 (October 30, 2025)
 - Initial release
 - 6 core endpoints implemented
-- Investment scoring algorithm
-- Blue Gem pattern detection (AK-47)
+- Investment scoring algorithm (weighted 1-10 scale)
+- Blue Gem pattern detection (AK-47, 14 patterns)
 - PostgreSQL database integration
 - Real-time price enrichment
+- Database schema with 6 tables
 
-### Planned Features (v1.1.0)
-- Daily portfolio snapshots
+### Planned Features (v2.0.0)
+- Daily portfolio snapshots (automated)
 - Historical performance charts
-- Asset allocation breakdown
-- Export to CSV/JSON
-- Email notifications for price changes
-- More pattern detection (Fade, Doppler, Crimson Web)
+- Email/webhook notifications for price changes
+- More pattern detection (Fade %, Doppler phases, Crimson Web)
+- WebSocket support for real-time updates
+- Advanced filtering and sorting options
 
 ---
 

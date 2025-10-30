@@ -1839,6 +1839,635 @@ function getWearFromFloat(floatValue) {
     return 'BS';
 }
 
+// ============================================================================
+// ENHANCED PORTFOLIO ENDPOINTS (Inspired by SkinWatch/SkinVault)
+// ============================================================================
+
+/**
+ * Get Asset Allocation
+ * GET /api/portfolio/allocation/:userId
+ */
+app.get('/api/portfolio/allocation/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        // Get all unsold investments
+        const result = await postgres.pool.query(`
+            SELECT
+                pi.item_name,
+                pi.purchase_price,
+                pi.quantity,
+                COALESCE(SUM(ps.quantity), 0) as sold_quantity
+            FROM portfolio_investments pi
+            LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
+            WHERE pi.user_id = $1 AND pi.is_sold = false
+            GROUP BY pi.id
+        `, [userId]);
+
+        const investments = result.rows;
+
+        // Calculate asset allocation
+        const allocation = {};
+        let totalValue = 0;
+
+        for (const inv of investments) {
+            // Get current price
+            let currentPrice = inv.purchase_price;
+            try {
+                const priceData = await postgres.getCachedPrice(inv.item_name);
+                currentPrice = priceData?.lowestPrice || inv.purchase_price;
+            } catch (e) {
+                winston.warn(`Failed to get price for ${inv.item_name}`);
+            }
+
+            const remaining = inv.quantity - inv.sold_quantity;
+            const value = currentPrice * remaining;
+            totalValue += value;
+
+            // Categorize by item type
+            const category = categorizeItem(inv.item_name);
+            allocation[category] = (allocation[category] || 0) + value;
+        }
+
+        // Convert to percentages
+        const allocationPercentages = {};
+        Object.keys(allocation).forEach(category => {
+            allocationPercentages[category] = {
+                value: parseFloat(allocation[category].toFixed(2)),
+                percentage: totalValue > 0 ? parseFloat(((allocation[category] / totalValue) * 100).toFixed(2)) : 0
+            };
+        });
+
+        res.json({
+            success: true,
+            totalValue: parseFloat(totalValue.toFixed(2)),
+            allocation: allocationPercentages,
+            categories: Object.keys(allocationPercentages).sort()
+        });
+
+    } catch (e) {
+        winston.error('Error calculating asset allocation:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'ALLOCATION_ERROR'
+        });
+    }
+});
+
+/**
+ * Get Portfolio Health Metrics
+ * GET /api/portfolio/health/:userId
+ */
+app.get('/api/portfolio/health/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        // Get portfolio data
+        const result = await postgres.pool.query(`
+            SELECT
+                pi.*,
+                COALESCE(SUM(ps.quantity), 0) as sold_quantity,
+                COALESCE(SUM(ps.profit_loss), 0) as realized_profit
+            FROM portfolio_investments pi
+            LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
+            WHERE pi.user_id = $1
+            GROUP BY pi.id
+        `, [userId]);
+
+        const investments = result.rows;
+
+        // Calculate health metrics
+        let totalValue = 0;
+        let totalInvested = 0;
+        let safeValue = 0; // Cases, stickers, etc
+        let riskyValue = 0; // Knives, blue gems, etc
+        let liquidValue = 0; // High liquidity items
+        const itemTypes = new Map();
+
+        for (const inv of investments) {
+            const remaining = inv.quantity - inv.sold_quantity;
+            if (remaining <= 0) continue;
+
+            const investedValue = inv.purchase_price * remaining;
+            totalInvested += investedValue;
+
+            // Get current price
+            let currentPrice = inv.purchase_price;
+            try {
+                const priceData = await postgres.getCachedPrice(inv.item_name);
+                currentPrice = priceData?.lowestPrice || inv.purchase_price;
+
+                // Check liquidity
+                const listings = priceData?.prices?.csfloat?.listings || 0;
+                if (listings > 100) {
+                    liquidValue += currentPrice * remaining;
+                }
+            } catch (e) {
+                // Ignore price fetch errors
+            }
+
+            const currentValue = currentPrice * remaining;
+            totalValue += currentValue;
+
+            // Categorize risk
+            const category = categorizeItem(inv.item_name);
+            const isSafe = ['Cases', 'Stickers', 'Capsules', 'Keys'].includes(category);
+            const isRisky = inv.pattern_tier !== 'Standard' || category === 'Knives';
+
+            if (isSafe) safeValue += currentValue;
+            if (isRisky) riskyValue += currentValue;
+
+            // Track item types
+            itemTypes.set(category, (itemTypes.get(category) || 0) + 1);
+        }
+
+        // Calculate diversity score (1-10)
+        const diversityScore = calculateDiversityScore(itemTypes, investments.length);
+
+        // Calculate risk score (1-10, 10 = most risky)
+        const riskScore = totalValue > 0 ? (riskyValue / totalValue) * 10 : 5;
+
+        // Calculate liquidity score (1-10)
+        const liquidityScore = totalValue > 0 ? (liquidValue / totalValue) * 10 : 5;
+
+        // Overall health score (1-10)
+        const healthScore = (
+            diversityScore * 0.4 +
+            (10 - riskScore) * 0.3 +
+            liquidityScore * 0.3
+        );
+
+        res.json({
+            success: true,
+            health: {
+                overallScore: parseFloat(healthScore.toFixed(1)),
+                diversityScore: parseFloat(diversityScore.toFixed(1)),
+                riskScore: parseFloat(riskScore.toFixed(1)),
+                liquidityScore: parseFloat(liquidityScore.toFixed(1))
+            },
+            allocation: {
+                safe: parseFloat(safeValue.toFixed(2)),
+                risky: parseFloat(riskyValue.toFixed(2)),
+                liquid: parseFloat(liquidValue.toFixed(2)),
+                safePercentage: totalValue > 0 ? parseFloat(((safeValue / totalValue) * 100).toFixed(2)) : 0,
+                riskyPercentage: totalValue > 0 ? parseFloat(((riskyValue / totalValue) * 100).toFixed(2)) : 0,
+                liquidPercentage: totalValue > 0 ? parseFloat(((liquidValue / totalValue) * 100).toFixed(2)) : 0
+            },
+            metrics: {
+                totalCategories: itemTypes.size,
+                totalItems: investments.length,
+                totalValue: parseFloat(totalValue.toFixed(2)),
+                totalInvested: parseFloat(totalInvested.toFixed(2))
+            }
+        });
+
+    } catch (e) {
+        winston.error('Error calculating portfolio health:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'HEALTH_CALCULATION_ERROR'
+        });
+    }
+});
+
+/**
+ * Batch Add Investments
+ * POST /api/portfolio/batch/add
+ */
+app.post('/api/portfolio/batch/add', async (req, res) => {
+    try {
+        const { userId, investments } = req.body;
+
+        if (!userId || !investments || !Array.isArray(investments) || investments.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: userId, investments array',
+                code: 'INVALID_REQUEST'
+            });
+        }
+
+        if (investments.length > 50) {
+            return res.status(400).json({
+                success: false,
+                error: 'Maximum 50 investments per batch',
+                code: 'BATCH_LIMIT_EXCEEDED'
+            });
+        }
+
+        const results = [];
+        const errors = [];
+
+        for (const [index, inv] of investments.entries()) {
+            try {
+                if (!inv.itemName || !inv.purchasePrice) {
+                    throw new Error('Missing itemName or purchasePrice');
+                }
+
+                const result = await postgres.pool.query(`
+                    INSERT INTO portfolio_investments (
+                        user_id, item_name, purchase_price, quantity, marketplace, notes
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING id
+                `, [
+                    userId,
+                    inv.itemName,
+                    inv.purchasePrice,
+                    inv.quantity || 1,
+                    inv.marketplace || 'Steam',
+                    inv.notes || null
+                ]);
+
+                results.push({
+                    index,
+                    id: result.rows[0].id,
+                    itemName: inv.itemName,
+                    success: true
+                });
+            } catch (error) {
+                errors.push({
+                    index,
+                    itemName: inv.itemName,
+                    error: error.message
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            total: investments.length,
+            successful: results.length,
+            failed: errors.length,
+            results: results,
+            errors: errors.length > 0 ? errors : undefined
+        });
+
+    } catch (e) {
+        winston.error('Error in batch add:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'BATCH_ADD_ERROR'
+        });
+    }
+});
+
+/**
+ * Batch Delete Investments
+ * POST /api/portfolio/batch/delete
+ */
+app.post('/api/portfolio/batch/delete', async (req, res) => {
+    try {
+        const { userId, investmentIds } = req.body;
+
+        if (!userId || !investmentIds || !Array.isArray(investmentIds) || investmentIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: userId, investmentIds array',
+                code: 'INVALID_REQUEST'
+            });
+        }
+
+        if (investmentIds.length > 100) {
+            return res.status(400).json({
+                success: false,
+                error: 'Maximum 100 deletions per batch',
+                code: 'BATCH_LIMIT_EXCEEDED'
+            });
+        }
+
+        // Delete all investments
+        const result = await postgres.pool.query(`
+            DELETE FROM portfolio_investments
+            WHERE id = ANY($1) AND user_id = $2
+            RETURNING id
+        `, [investmentIds, userId]);
+
+        res.json({
+            success: true,
+            deleted: result.rows.length,
+            deletedIds: result.rows.map(r => r.id)
+        });
+
+    } catch (e) {
+        winston.error('Error in batch delete:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'BATCH_DELETE_ERROR'
+        });
+    }
+});
+
+/**
+ * Get Recent Activity
+ * GET /api/portfolio/activity/:userId
+ */
+app.get('/api/portfolio/activity/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = parseInt(req.query.offset) || 0;
+
+        // Get recent investments
+        const investmentsResult = await postgres.pool.query(`
+            SELECT id, item_name, purchase_price, quantity, marketplace, created_at, 'investment' as type
+            FROM portfolio_investments
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+        `, [userId, Math.floor(limit / 2), offset]);
+
+        // Get recent sales
+        const salesResult = await postgres.pool.query(`
+            SELECT ps.id, pi.item_name, ps.sale_price, ps.quantity, ps.marketplace,
+                   ps.profit_loss, ps.roi_percent, ps.created_at, 'sale' as type
+            FROM portfolio_sales ps
+            JOIN portfolio_investments pi ON ps.investment_id = pi.id
+            WHERE ps.user_id = $1
+            ORDER BY ps.created_at DESC
+            LIMIT $2 OFFSET $3
+        `, [userId, Math.floor(limit / 2), offset]);
+
+        // Combine and sort by date
+        const activities = [...investmentsResult.rows, ...salesResult.rows]
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, limit);
+
+        res.json({
+            success: true,
+            activities: activities,
+            total: activities.length,
+            limit: limit,
+            offset: offset
+        });
+
+    } catch (e) {
+        winston.error('Error fetching activity:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'ACTIVITY_FETCH_ERROR'
+        });
+    }
+});
+
+/**
+ * Export Portfolio
+ * GET /api/portfolio/export/:userId
+ */
+app.get('/api/portfolio/export/:userId', async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const format = req.query.format || 'json'; // 'json' or 'csv'
+
+        // Get all portfolio data
+        const result = await postgres.pool.query(`
+            SELECT
+                pi.*,
+                COALESCE(SUM(ps.quantity), 0) as sold_quantity,
+                COALESCE(SUM(ps.profit_loss), 0) as realized_profit
+            FROM portfolio_investments pi
+            LEFT JOIN portfolio_sales ps ON pi.id = ps.investment_id
+            WHERE pi.user_id = $1
+            GROUP BY pi.id
+            ORDER BY pi.created_at DESC
+        `, [userId]);
+
+        const investments = result.rows;
+
+        if (format === 'csv') {
+            // Generate CSV
+            const headers = [
+                'ID', 'Item Name', 'Purchase Price', 'Quantity', 'Marketplace',
+                'Purchase Date', 'Float Value', 'Pattern Index', 'Wear',
+                'Investment Score', 'Pattern Tier', 'Notes', 'Is Sold'
+            ];
+
+            const csvRows = [headers.join(',')];
+
+            for (const inv of investments) {
+                const row = [
+                    inv.id,
+                    `"${inv.item_name}"`,
+                    inv.purchase_price,
+                    inv.quantity,
+                    inv.marketplace,
+                    inv.purchase_date,
+                    inv.float_value || '',
+                    inv.pattern_index || '',
+                    inv.wear || '',
+                    inv.investment_score || '',
+                    inv.pattern_tier || '',
+                    `"${inv.notes || ''}"`,
+                    inv.is_sold
+                ];
+                csvRows.push(row.join(','));
+            }
+
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename=portfolio_${userId}_${Date.now()}.csv`);
+            res.send(csvRows.join('\n'));
+
+        } else {
+            // JSON format
+            res.json({
+                success: true,
+                exportDate: new Date().toISOString(),
+                userId: userId,
+                totalInvestments: investments.length,
+                investments: investments
+            });
+        }
+
+    } catch (e) {
+        winston.error('Error exporting portfolio:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'EXPORT_ERROR'
+        });
+    }
+});
+
+/**
+ * Update Investment
+ * PATCH /api/portfolio/update/:investmentId
+ */
+app.patch('/api/portfolio/update/:investmentId', async (req, res) => {
+    try {
+        const investmentId = req.params.investmentId;
+        const { purchasePrice, quantity, marketplace, notes, tags } = req.body;
+
+        // Build update query dynamically
+        const updates = [];
+        const values = [];
+        let paramCount = 1;
+
+        if (purchasePrice !== undefined) {
+            updates.push(`purchase_price = $${paramCount++}`);
+            values.push(purchasePrice);
+        }
+        if (quantity !== undefined) {
+            updates.push(`quantity = $${paramCount++}`);
+            values.push(quantity);
+        }
+        if (marketplace !== undefined) {
+            updates.push(`marketplace = $${paramCount++}`);
+            values.push(marketplace);
+        }
+        if (notes !== undefined) {
+            updates.push(`notes = $${paramCount++}`);
+            values.push(notes);
+        }
+        if (tags !== undefined) {
+            updates.push(`tags = $${paramCount++}`);
+            values.push(tags);
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'No fields to update',
+                code: 'NO_UPDATES'
+            });
+        }
+
+        updates.push(`updated_at = NOW()`);
+        values.push(investmentId);
+
+        const query = `
+            UPDATE portfolio_investments
+            SET ${updates.join(', ')}
+            WHERE id = $${paramCount}
+            RETURNING *
+        `;
+
+        const result = await postgres.pool.query(query, values);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Investment not found',
+                code: 'NOT_FOUND'
+            });
+        }
+
+        res.json({
+            success: true,
+            investment: result.rows[0]
+        });
+
+    } catch (e) {
+        winston.error('Error updating investment:', e);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            code: 'UPDATE_ERROR'
+        });
+    }
+});
+
+// ============================================================================
+// HELPER FUNCTIONS FOR ENHANCED FEATURES
+// ============================================================================
+
+/**
+ * Categorize item by name
+ */
+function categorizeItem(itemName) {
+    const name = itemName.toLowerCase();
+
+    // Knives
+    if (itemName.startsWith('★') && !name.includes('glove') && !name.includes('wraps')) {
+        return 'Knives';
+    }
+
+    // Gloves
+    if (itemName.startsWith('★') && (name.includes('glove') || name.includes('wraps'))) {
+        return 'Gloves';
+    }
+
+    // Cases
+    if (name.includes('case') && !name.includes('key')) {
+        return 'Cases';
+    }
+
+    // Keys
+    if (name.includes('key')) {
+        return 'Keys';
+    }
+
+    // Stickers
+    if (name.includes('sticker')) {
+        return 'Stickers';
+    }
+
+    // Capsules
+    if (name.includes('capsule')) {
+        return 'Capsules';
+    }
+
+    // Agents
+    if (name.includes('agent') || name.includes('elite crew') || name.includes('fbi')) {
+        return 'Agents';
+    }
+
+    // Weapon categories
+    if (name.includes('ak-47') || name.includes('m4a4') || name.includes('m4a1-s') ||
+        name.includes('galil') || name.includes('famas') || name.includes('sg 553') || name.includes('aug')) {
+        return 'Rifles';
+    }
+
+    if (name.includes('awp') || name.includes('ssg 08') || name.includes('scar-20') || name.includes('g3sg1')) {
+        return 'Snipers';
+    }
+
+    if (name.includes('desert eagle') || name.includes('glock-18') || name.includes('usp-s') ||
+        name.includes('p250') || name.includes('five-seven') || name.includes('tec-9') ||
+        name.includes('cz75') || name.includes('dual berettas') || name.includes('p2000') || name.includes('r8 revolver')) {
+        return 'Pistols';
+    }
+
+    if (name.includes('mac-10') || name.includes('mp9') || name.includes('mp7') ||
+        name.includes('ump-45') || name.includes('p90') || name.includes('pp-bizon') || name.includes('mp5-sd')) {
+        return 'SMGs';
+    }
+
+    if (name.includes('nova') || name.includes('xm1014') || name.includes('mag-7') ||
+        name.includes('sawed-off') || name.includes('m249') || name.includes('negev')) {
+        return 'Heavy';
+    }
+
+    return 'Other';
+}
+
+/**
+ * Calculate diversity score (1-10)
+ */
+function calculateDiversityScore(itemTypes, totalItems) {
+    if (totalItems === 0) return 5.0;
+
+    const numCategories = itemTypes.size;
+
+    // Calculate distribution evenness (Gini coefficient approach)
+    const values = Array.from(itemTypes.values());
+    const maxPossibleCategories = 10; // Theoretical max categories
+
+    // Base score on number of categories
+    const categoryScore = Math.min(numCategories / maxPossibleCategories, 1.0) * 10;
+
+    // Penalize if one category dominates
+    const maxCount = Math.max(...values);
+    const dominanceRatio = maxCount / totalItems;
+    const dominancePenalty = dominanceRatio > 0.5 ? (dominanceRatio - 0.5) * 10 : 0;
+
+    const score = Math.max(1, Math.min(10, categoryScore - dominancePenalty));
+    return score;
+}
+
 winston.info('Portfolio endpoints loaded successfully');
 
 // Helper function to calculate trade risk
