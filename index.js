@@ -78,19 +78,14 @@ app.use(function (error, req, res, next) {
 // =====================================================================
 // STEAM AUTHENTICATION SETUP
 // =====================================================================
-// REMOVED: Passport.js authentication - migrating to Better Auth
-// const session = require('express-session');
-// const passport = require('passport');
-// const steamAuth = require('./lib/steam-auth');
-
-// Use dual authentication middleware (supports Better Auth tokens)
-const dualAuthModule = require('./lib/dual-auth');
-const { dualAuth, optionalAuth } = dualAuthModule;
+// Better Auth authentication (from Next.js frontend)
+const auth = require('./lib/auth');
+const { requireAuth, optionalAuth } = auth;
 const steamInventory = require('./lib/steam-inventory');
 
-// Initialize dual-auth with postgres connection
-dualAuthModule.initialize(postgres);
-winston.info('Better Auth token verification configured');
+// Initialize auth with postgres connection
+auth.initialize(postgres);
+winston.info('Better Auth authentication configured');
 
 
 
@@ -3494,8 +3489,6 @@ winston.info('Portfolio snapshots and advanced features loaded');
 // AUTHENTICATION & API KEY MANAGEMENT ENDPOINTS
 // =====================================================================
 
-const auth = require('./lib/auth');
-
 // Create API key
 app.post('/api/auth/create-key', async (req, res) => {
     try {
@@ -4030,7 +4023,7 @@ winston.info('Using Better Auth for authentication (configured in Next.js fronte
 // =====================================================================
 
 // Get user's CS2 inventory
-app.get('/api/steam/inventory/:steamId', dualAuth, async (req, res) => {
+app.get('/api/steam/inventory/:steamId', requireAuth, async (req, res) => {
     try {
         const { steamId } = req.params;
         
@@ -4056,7 +4049,7 @@ app.get('/api/steam/inventory/:steamId', dualAuth, async (req, res) => {
 });
 
 // Get inventory value estimate
-app.get('/api/steam/inventory/:steamId/value', dualAuth, async (req, res) => {
+app.get('/api/steam/inventory/:steamId/value', requireAuth, async (req, res) => {
     try {
         const { steamId } = req.params;
         
@@ -4082,7 +4075,7 @@ app.get('/api/steam/inventory/:steamId/value', dualAuth, async (req, res) => {
 });
 
 // Sync inventory to portfolio
-app.post('/api/steam/inventory/sync', dualAuth, async (req, res) => {
+app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
     try {
         const steamId = req.user.steam_id;
         const { selected_items = [] } = req.body;
