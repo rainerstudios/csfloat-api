@@ -4149,6 +4149,23 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
     }
 });
 
+// TEST ENDPOINT - Remove auth requirement for testing
+// WARNING: This exposes inventory data publicly! Remove in production!
+app.get('/api/steam/inventory/test/:steamId', async (req, res) => {
+    try {
+        const { steamId } = req.params;
+        const result = await steamInventory.getSteamInventory(steamId);
+        res.json(result);
+    } catch (error) {
+        winston.error('Test inventory fetch error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch inventory',
+            message: error.message
+        });
+    }
+});
+
 winston.info('Steam inventory endpoints loaded');
 
 
