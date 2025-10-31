@@ -7,7 +7,7 @@ const passport = require('passport');
 const SteamStrategy = require('passport-steam').Strategy;
 const jwt = require('jsonwebtoken');
 
-const STEAM_API_KEY = process.env.STEAM_API_KEY || '863053349689FA6DE8D1B9D5792A62AF';
+const STEAM_API_KEY = '65223E8BE47C4CDFFE454434252C8012';
 const STEAM_RETURN_URL = process.env.STEAM_RETURN_URL || 'http://localhost:3002/auth/steam/return';
 const STEAM_REALM = STEAM_RETURN_URL.replace('/auth/steam/return', '');
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -150,8 +150,8 @@ function setupAuthRoutes(app, postgres) {
             // Generate JWT token for frontend
             const token = generateToken(req.user);
 
-            // Redirect directly to frontend - frontend will save token to localStorage
-            res.redirect(`${FRONTEND_URL}/auth/steam/callback?token=${token}`);
+            // Redirect to frontend API route to set httpOnly cookie
+            res.redirect(`${FRONTEND_URL}/api/auth/steam/callback?token=${token}`);
         }
     );
 

@@ -78,31 +78,16 @@ app.use(function (error, req, res, next) {
 // =====================================================================
 // STEAM AUTHENTICATION SETUP
 // =====================================================================
-const session = require('express-session');
-const passport = require('passport');
-const steamAuth = require('./lib/steam-auth');
+// REMOVED: Passport.js authentication - migrating to Better Auth
+// const session = require('express-session');
+// const passport = require('passport');
+// const steamAuth = require('./lib/steam-auth');
+
+// Use dual authentication middleware (supports Better Auth tokens)
+const { dualAuth, optionalAuth } = require('./lib/dual-auth');
 const steamInventory = require('./lib/steam-inventory');
 
-// Session middleware
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'cs2float-session-secret-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        sameSite: 'lax'
-    }
-}));
-
-// Initialize Passport
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Configure Steam authentication
-steamAuth.configureSteamAuth(postgres);
-winston.info('Steam authentication configured');
+winston.info('Better Auth token verification configured');
 
 
 
@@ -4033,15 +4018,16 @@ function calculateTradeRisk(history) {
 // =====================================================================
 // STEAM AUTHENTICATION ROUTES
 // =====================================================================
-steamAuth.setupAuthRoutes(app, postgres);
-winston.info('Steam authentication routes loaded');
+// REMOVED: Old Passport.js Steam auth routes
+// steamAuth.setupAuthRoutes(app, postgres);
+winston.info('Using Better Auth for authentication (configured in Next.js frontend)');
 
 // =====================================================================
 // STEAM INVENTORY ENDPOINTS
 // =====================================================================
 
 // Get user's CS2 inventory
-app.get('/api/steam/inventory/:steamId', steamAuth.requireAuth, async (req, res) => {
+app.get('/api/steam/inventory/:steamId', dualAuth, async (req, res) => {
     try {
         const { steamId } = req.params;
         
@@ -4067,7 +4053,7 @@ app.get('/api/steam/inventory/:steamId', steamAuth.requireAuth, async (req, res)
 });
 
 // Get inventory value estimate
-app.get('/api/steam/inventory/:steamId/value', steamAuth.requireAuth, async (req, res) => {
+app.get('/api/steam/inventory/:steamId/value', dualAuth, async (req, res) => {
     try {
         const { steamId } = req.params;
         
@@ -4093,7 +4079,7 @@ app.get('/api/steam/inventory/:steamId/value', steamAuth.requireAuth, async (req
 });
 
 // Sync inventory to portfolio
-app.post('/api/steam/inventory/sync', steamAuth.requireAuth, async (req, res) => {
+app.post('/api/steam/inventory/sync', dualAuth, async (req, res) => {
     try {
         const steamId = req.user.steam_id;
         const { selected_items = [] } = req.body;
