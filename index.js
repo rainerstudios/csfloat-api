@@ -4092,7 +4092,7 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
         
         // Filter items to sync (either all or selected)
         const itemsToSync = selected_items.length > 0
-            ? inventoryResult.items.filter(item => selected_items.includes(item.asset_id))
+            ? inventoryResult.items.filter(item => selected_items.includes(item.assetid))
             : inventoryResult.items;
         
         // Add each item to portfolio
