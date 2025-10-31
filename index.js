@@ -84,9 +84,12 @@ app.use(function (error, req, res, next) {
 // const steamAuth = require('./lib/steam-auth');
 
 // Use dual authentication middleware (supports Better Auth tokens)
-const { dualAuth, optionalAuth } = require('./lib/dual-auth');
+const dualAuthModule = require('./lib/dual-auth');
+const { dualAuth, optionalAuth } = dualAuthModule;
 const steamInventory = require('./lib/steam-inventory');
 
+// Initialize dual-auth with postgres connection
+dualAuthModule.initialize(postgres);
 winston.info('Better Auth token verification configured');
 
 
