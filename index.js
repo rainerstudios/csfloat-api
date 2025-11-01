@@ -2138,6 +2138,9 @@ app.post('/api/portfolio/batch/add', async (req, res) => {
             });
         }
 
+        // Extract Steam ID from userId (format: "steam_76561199094452064")
+        const steamId = userId.replace('steam_', '');
+
         const results = [];
         const errors = [];
 
@@ -2149,12 +2152,13 @@ app.post('/api/portfolio/batch/add', async (req, res) => {
 
                 const result = await postgres.pool.query(`
                     INSERT INTO portfolio_investments (
-                        user_id, item_name, purchase_price, quantity, marketplace, notes
+                        user_id, user_steam_id, item_name, purchase_price, quantity, marketplace, notes
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
                     RETURNING id
                 `, [
                     userId,
+                    steamId,
                     inv.itemName,
                     inv.purchasePrice,
                     inv.quantity || 1,
