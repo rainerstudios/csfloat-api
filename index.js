@@ -1263,20 +1263,24 @@ app.post('/api/portfolio/add', async (req, res) => {
             patternMultiplier = patternInfo.multiplier;
         }
 
+        // Extract Steam ID from userId (format: "steam_76561199094452064")
+        const steamId = userId.replace('steam_', '');
+
         // Insert into database
         const result = await postgres.pool.query(`
             INSERT INTO portfolio_investments (
-                user_id, item_name, purchase_price, quantity, marketplace,
+                user_id, user_steam_id, item_name, purchase_price, quantity, marketplace,
                 float_value, pattern_index, defindex, paintindex,
                 wear, is_stattrak,
                 investment_score, investment_score_breakdown,
                 float_rarity_score, pattern_tier, pattern_value_multiplier,
                 stickers, notes
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
             RETURNING id
         `, [
             userId,
+            steamId,
             itemName,
             purchasePrice,
             quantity,
