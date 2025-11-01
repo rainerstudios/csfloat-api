@@ -17,8 +17,9 @@
     "command-line-args": "^5.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.17.1",
-    "express-rate-limit": "^5.2.6",
+    "express-rate-limit": "^5.5.1",
     "globaloffensive": "^3.2.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "long": "^3.2.0",
     "mongodb": "^2.2.36",
@@ -29,7 +30,8 @@
     "steam-totp": "^2.1.2",
     "steam-user": "^5.2.0",
     "uuid": "^13.0.0",
-    "winston": "^2.4.5"
+    "winston": "^2.4.5",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "eslint": "^8.56.0",

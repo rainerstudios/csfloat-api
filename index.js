@@ -67,6 +67,34 @@ app.use(function (req, res, next) {
 });
 app.use(bodyParser.json({limit: '5mb'}));
 
+// Import new middleware
+const {
+    asyncHandler,
+    ApiError,
+    errorHandler,
+    notFoundHandler,
+    requestLogger
+} = require('./middleware/errorHandler');
+const {
+    helmetConfig,
+    generalLimiter,
+    sanitizeInput
+} = require('./middleware/security');
+const {
+    portfolioSchemas,
+    floatSchemas,
+    priceSchemas,
+    commonSchemas,
+    validate,
+    validateQuery,
+    validateParams
+} = require('./middleware/validation');
+
+// Security middleware
+app.use(helmetConfig); // Security headers
+app.use(requestLogger); // Request logging
+app.use(sanitizeInput); // Input sanitization
+
 app.use(function (error, req, res, next) {
     // Handle bodyParser errors
     if (error instanceof SyntaxError) {
@@ -1177,97 +1205,89 @@ app.get('/api/inventory/:steamId', async (req, res) => {
  * Add new investment to portfolio
  * POST /api/portfolio/add
  */
-app.post('/api/portfolio/add', async (req, res) => {
-    try {
-        const {
-            userId,
-            itemName,
-            purchasePrice,
-            quantity = 1,
-            inspectLink,
-            marketplace = 'Steam',
-            notes
-        } = req.body;
+app.post('/api/portfolio/add', validate(portfolioSchemas.addInvestment), asyncHandler(async (req, res) => {
+    const {
+        userId,
+        itemName,
+        purchasePrice,
+        quantity,
+        inspectLink,
+        marketplace,
+        notes
+    } = req.body;
 
-        if (!userId || !itemName || !purchasePrice) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields: userId, itemName, purchasePrice'
-            });
-        }
+    let floatData = null;
+    let rarityData = null;
+    let priceData = null;
+    let investmentScore = null;
 
-        let floatData = null;
-        let rarityData = null;
-        let priceData = null;
-        let investmentScore = null;
-
-        // If inspect link provided, fetch float data
-        if (inspectLink) {
-            try {
-                const link = new InspectURL(inspectLink);
-
-                if (link.valid) {
-                    const itemData = await postgres.getItemData([link.link]);
-                    if (itemData.length > 0) {
-                        floatData = itemData[0];
-                    }
-                }
-            } catch (e) {
-                winston.warn(`Failed to fetch float data: ${e.message}`);
-            }
-        }
-
-        // Get rarity data if we have float data
-        if (floatData) {
-            try {
-                rarityData = await postgres.getFloatRarity(
-                    floatData.defindex,
-                    floatData.paintindex,
-                    floatData.floatvalue
-                );
-            } catch (e) {
-                winston.warn(`Failed to get rarity data: ${e.message}`);
-            }
-        }
-
-        // Get current price data
+    // If inspect link provided, fetch float data
+    if (inspectLink) {
         try {
-            priceData = await postgres.getCachedPrice(itemName);
-        } catch (e) {
-            winston.warn(`Failed to get price data: ${e.message}`);
-        }
+            const link = new InspectURL(inspectLink);
 
-        // Calculate Investment Score if we have enough data
-        if (rarityData && priceData) {
-            try {
-                investmentScore = await calculateInvestmentScore({
-                    floatRarity: rarityData.rarityScore || 50,
-                    patternIndex: floatData?.paintseed || 0,
-                    itemName: itemName,
-                    liquidity: priceData.prices?.csfloat?.listings || 0,
-                    currentPrice: priceData.lowestPrice || purchasePrice,
-                    defindex: floatData?.defindex || 0,
-                    paintindex: floatData?.paintindex || 0
-                });
-            } catch (e) {
-                winston.warn(`Failed to calculate investment score: ${e.message}`);
+            if (link.valid) {
+                const itemData = await postgres.getItemData([link.link]);
+                if (itemData.length > 0) {
+                    floatData = itemData[0];
+                }
             }
+        } catch (e) {
+            winston.warn(`Failed to fetch float data: ${e.message}`);
         }
+    }
 
-        // Detect pattern tier (Blue Gems, etc.)
-        let patternTier = 'Standard';
-        let patternMultiplier = 1.0;
-        if (floatData) {
-            const patternInfo = await detectPatternTier(itemName, floatData.paintseed);
-            patternTier = patternInfo.tier;
-            patternMultiplier = patternInfo.multiplier;
+    // Get rarity data if we have float data
+    if (floatData) {
+        try {
+            rarityData = await postgres.getFloatRarity(
+                floatData.defindex,
+                floatData.paintindex,
+                floatData.floatvalue
+            );
+        } catch (e) {
+            winston.warn(`Failed to get rarity data: ${e.message}`);
         }
+    }
 
-        // Extract Steam ID from userId (format: "steam_76561199094452064")
-        const steamId = userId.replace('steam_', '');
+    // Get current price data
+    try {
+        priceData = await postgres.getCachedPrice(itemName);
+    } catch (e) {
+        winston.warn(`Failed to get price data: ${e.message}`);
+    }
 
-        // Insert into database
-        const result = await postgres.pool.query(`
+    // Calculate Investment Score if we have enough data
+    if (rarityData && priceData) {
+        try {
+            investmentScore = await calculateInvestmentScore({
+                floatRarity: rarityData.rarityScore || 50,
+                patternIndex: floatData?.paintseed || 0,
+                itemName: itemName,
+                liquidity: priceData.prices?.csfloat?.listings || 0,
+                currentPrice: priceData.lowestPrice || purchasePrice,
+                defindex: floatData?.defindex || 0,
+                paintindex: floatData?.paintindex || 0
+            });
+        } catch (e) {
+            winston.warn(`Failed to calculate investment score: ${e.message}`);
+        }
+    }
+
+    // Detect pattern tier (Blue Gems, etc.)
+    let patternTier = 'Standard';
+    let patternMultiplier = 1.0;
+    if (floatData) {
+        const patternInfo = await detectPatternTier(itemName, floatData.paintseed);
+        patternTier = patternInfo.tier;
+        patternMultiplier = patternInfo.multiplier;
+    }
+
+    // Extract Steam ID from userId (format: "steam_76561199094452064")
+    const steamId = userId.replace('steam_', '');
+
+    // Insert into database
+    const result = await postgres.pool.query(`
             INSERT INTO portfolio_investments (
                 user_id, user_steam_id, item_name, purchase_price, quantity, marketplace,
                 float_value, pattern_index, defindex, paintindex,
@@ -1300,27 +1320,19 @@ app.post('/api/portfolio/add', async (req, res) => {
             notes || null
         ]);
 
-        res.json({
-            success: true,
-            investment: {
-                id: result.rows[0].id,
-                itemName: itemName,
-                purchasePrice: purchasePrice,
-                floatValue: floatData?.floatvalue || null,
-                investmentScore: investmentScore?.overall || null,
-                patternTier: patternTier,
-                rarityTier: rarityData?.rarityTier || null
-            }
-        });
-
-    } catch (e) {
-        winston.error('Error adding portfolio investment:', e);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error'
-        });
-    }
-});
+    res.json({
+        success: true,
+        investment: {
+            id: result.rows[0].id,
+            itemName: itemName,
+            purchasePrice: purchasePrice,
+            floatValue: floatData?.floatvalue || null,
+            investmentScore: investmentScore?.overall || null,
+            patternTier: patternTier,
+            rarityTier: rarityData?.rarityTier || null
+        }
+    });
+}));
 
 /**
  * Get user portfolio
@@ -4202,6 +4214,60 @@ app.get('/api/steam/inventory/test/:steamId', async (req, res) => {
 
 winston.info('Steam inventory endpoints loaded');
 
+// =====================================================================
+// HEALTH CHECK ENDPOINT
+// =====================================================================
+app.get('/health', asyncHandler(async (req, res) => {
+    const health = {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        service: 'cs2-float-api',
+        version: '1.4.1',
+        checks: {
+            database: 'unknown',
+            bots: 'unknown',
+            queue: 'unknown'
+        }
+    };
+
+    // Check database connection
+    try {
+        await postgres.pool.query('SELECT 1');
+        health.checks.database = 'healthy';
+    } catch (error) {
+        health.checks.database = 'unhealthy';
+        health.status = 'degraded';
+    }
+
+    // Check bot status
+    health.checks.bots = botController.hasBotOnline() ? 'healthy' : 'unhealthy';
+    if (!botController.hasBotOnline()) {
+        health.status = 'degraded';
+    }
+
+    // Check queue status
+    health.checks.queue = queue.size() < (CONFIG.max_queue_size || 1000) ? 'healthy' : 'overloaded';
+
+    const statusCode = health.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(health);
+}));
+
+winston.info('Health check endpoint loaded at /health');
+
+// =====================================================================
+// ERROR HANDLERS (Must be last!)
+// =====================================================================
+// Apply general rate limiter to all API routes
+app.use('/api', generalLimiter);
+
+// 404 handler for undefined routes
+app.use(notFoundHandler);
+
+// Global error handler (must be last)
+app.use(errorHandler);
+
+winston.info('Error handlers and rate limiting configured');
 
 const http_server = require('http').Server(app);
 http_server.listen(CONFIG.http.port);
