@@ -4023,10 +4023,11 @@ winston.info('Using Better Auth for authentication (configured in Next.js fronte
 // =====================================================================
 
 // Get user's CS2 inventory
-app.get('/api/steam/inventory/:steamId', requireAuth, async (req, res) => {
+app.get('/api/steam/inventory/:steamId?', requireAuth, async (req, res) => {
     try {
-        const { steamId } = req.params;
-        
+        // Use authenticated user's Steam ID if not provided in URL
+        const steamId = req.params.steamId || req.user.steam_id;
+
         // Verify user can only access their own inventory (unless admin)
         if (req.user.steam_id !== steamId) {
             return res.status(403).json({
@@ -4035,7 +4036,7 @@ app.get('/api/steam/inventory/:steamId', requireAuth, async (req, res) => {
                 message: 'You can only access your own inventory'
             });
         }
-        
+
         const result = await steamInventory.getSteamInventory(steamId);
         res.json(result);
     } catch (error) {
@@ -4049,10 +4050,11 @@ app.get('/api/steam/inventory/:steamId', requireAuth, async (req, res) => {
 });
 
 // Get inventory value estimate
-app.get('/api/steam/inventory/:steamId/value', requireAuth, async (req, res) => {
+app.get('/api/steam/inventory/:steamId?/value', requireAuth, async (req, res) => {
     try {
-        const { steamId } = req.params;
-        
+        // Use authenticated user's Steam ID if not provided in URL
+        const steamId = req.params.steamId || req.user.steam_id;
+
         // Verify user can only access their own inventory
         if (req.user.steam_id !== steamId) {
             return res.status(403).json({
@@ -4061,7 +4063,7 @@ app.get('/api/steam/inventory/:steamId/value', requireAuth, async (req, res) => 
                 message: 'You can only access your own inventory'
             });
         }
-        
+
         const result = await steamInventory.getInventoryValue(steamId, postgres);
         res.json(result);
     } catch (error) {
