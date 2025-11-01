@@ -4100,13 +4100,35 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
         // Add each item to portfolio
         for (const item of itemsToSync) {
             try {
+                // Skip non-weapon items (stickers, cases, etc.) if they have no wear
+                if (!item.wear_full && item.weapon_type !== 'Knife' && item.weapon_type !== 'Gloves') {
+                    winston.debug(`Skipping non-weapon item: ${item.market_name}`);
+                    continue;
+                }
+
                 // Get market price
                 let price = 0;
                 if (item.marketable && item.market_hash_name) {
                     const cachedPrice = await postgres.getCachedPrice(item.market_hash_name);
-                    price = cachedPrice?.price || 0;
+                    price = cachedPrice?.lowestPrice || 0;
                 }
-                
+
+                // Check for duplicates
+                const duplicateCheck = await postgres.pool.query(`
+                    SELECT id FROM portfolio_investments
+                    WHERE user_steam_id = $1 AND item_name = $2 AND is_sold = false
+                    LIMIT 1
+                `, [steamId, item.market_name]);
+
+                if (duplicateCheck.rows.length > 0) {
+                    winston.debug(`Skipping duplicate item: ${item.market_name}`);
+                    errors.push({
+                        item: item.market_name,
+                        error: 'Item already exists in portfolio'
+                    });
+                    continue;
+                }
+
                 // Insert into portfolio
                 await postgres.pool.query(`
                     INSERT INTO portfolio_investments (
@@ -4116,18 +4138,20 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
                 `, [
                     'steam_' + steamId,
                     steamId,
-                    item.name,
+                    item.market_name,
                     price,
                     1,
                     'Steam',
                     item.is_stattrak || false,
                     'Imported from Steam inventory'
                 ]);
-                
+
+                winston.info(`Added to portfolio: ${item.market_name} - $${price}`);
                 added++;
             } catch (error) {
+                winston.error(`Error adding ${item.market_name}:`, error);
                 errors.push({
-                    item: item.name,
+                    item: item.market_name,
                     error: error.message
                 });
             }
