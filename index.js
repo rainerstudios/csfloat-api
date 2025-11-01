@@ -89,6 +89,7 @@ const {
     validateQuery,
     validateParams
 } = require('./middleware/validation');
+const { z } = require('zod');
 
 // Security middleware
 app.use(helmetConfig); // Security headers
@@ -1635,6 +1636,64 @@ app.delete('/api/portfolio/delete/:investmentId', async (req, res) => {
         });
     }
 });
+
+/**
+ * Reverse Sale - Undo a sale and restore the investment
+ * POST /api/portfolio/sale/reverse/:saleId
+ */
+app.post('/api/portfolio/sale/reverse/:saleId',
+    validateParams(z.object({
+        saleId: z.string().regex(/^\d+$/).transform(Number)
+    })),
+    asyncHandler(async (req, res) => {
+        const { saleId } = req.params;
+
+        // Get sale details
+        const saleResult = await postgres.pool.query(`
+            SELECT * FROM portfolio_sales WHERE id = $1
+        `, [saleId]);
+
+        if (saleResult.rows.length === 0) {
+            throw new ApiError(404, 'Sale not found', 'NOT_FOUND');
+        }
+
+        const sale = saleResult.rows[0];
+
+        // Check if investment still exists
+        const invResult = await postgres.pool.query(`
+            SELECT * FROM portfolio_investments WHERE id = $1
+        `, [sale.investment_id]);
+
+        if (invResult.rows.length === 0) {
+            throw new ApiError(404, 'Original investment not found', 'NOT_FOUND');
+        }
+
+        // Restore the investment
+        await postgres.pool.query(`
+            UPDATE portfolio_investments
+            SET is_sold = false, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+        `, [sale.investment_id]);
+
+        // Delete the sale record
+        await postgres.pool.query(`
+            DELETE FROM portfolio_sales WHERE id = $1
+        `, [saleId]);
+
+        res.json({
+            success: true,
+            message: 'Sale reversed successfully',
+            restoredInvestment: {
+                id: sale.investment_id,
+                itemName: sale.item_name,
+                quantity: sale.quantity_sold,
+                originalPrice: sale.original_purchase_price
+            }
+        });
+    })
+);
+
+winston.info('Reverse Sales endpoint loaded');
 
 // ============================================================================
 // INVESTMENT SCORING SYSTEM
@@ -4096,6 +4155,202 @@ app.get('/api/steam/inventory/:steamId?/value', requireAuth, async (req, res) =>
     }
 });
 
+// ============================================================================
+// QUICK ACTIONS API
+// ============================================================================
+
+/**
+ * Quick Add Investment - Streamlined endpoint for fast item addition
+ * POST /api/portfolio/quick/add
+ */
+app.post('/api/portfolio/quick/add',
+    validate(z.object({
+        userId: z.string().min(1),
+        itemNames: z.array(z.string()).min(1).max(20),
+        marketplace: z.string().optional().default('Steam')
+    })),
+    asyncHandler(async (req, res) => {
+        const { userId, itemNames, marketplace } = req.body;
+        const steamId = userId.replace('steam_', '');
+
+        const results = [];
+        const errors = [];
+
+        for (const itemName of itemNames) {
+            try {
+                // Get current market price
+                const priceData = await postgres.getCachedPrice(itemName);
+                const currentPrice = priceData?.lowestPrice || 0;
+
+                if (currentPrice === 0) {
+                    errors.push({
+                        itemName,
+                        error: 'Price not found'
+                    });
+                    continue;
+                }
+
+                // Insert with current price as purchase price
+                const result = await postgres.pool.query(`
+                    INSERT INTO portfolio_investments (
+                        user_id, user_steam_id, item_name, purchase_price,
+                        quantity, marketplace, notes
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id
+                `, [
+                    userId,
+                    steamId,
+                    itemName,
+                    currentPrice,
+                    1,
+                    marketplace,
+                    'Added via Quick Add'
+                ]);
+
+                results.push({
+                    id: result.rows[0].id,
+                    itemName,
+                    purchasePrice: currentPrice,
+                    success: true
+                });
+            } catch (error) {
+                errors.push({
+                    itemName,
+                    error: error.message
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            added: results.length,
+            failed: errors.length,
+            results,
+            errors: errors.length > 0 ? errors : undefined
+        });
+    })
+);
+
+/**
+ * Quick Record Sale - Fast sale recording
+ * POST /api/portfolio/quick/sell/:investmentId
+ */
+app.post('/api/portfolio/quick/sell/:investmentId',
+    validateParams(z.object({
+        investmentId: z.string().regex(/^\d+$/).transform(Number)
+    })),
+    validate(z.object({
+        salePrice: z.number().positive()
+    })),
+    asyncHandler(async (req, res) => {
+        const { investmentId } = req.params;
+        const { salePrice } = req.body;
+
+        // Get investment details
+        const invResult = await postgres.pool.query(`
+            SELECT * FROM portfolio_investments WHERE id = $1
+        `, [investmentId]);
+
+        if (invResult.rows.length === 0) {
+            throw new ApiError(404, 'Investment not found', 'NOT_FOUND');
+        }
+
+        const investment = invResult.rows[0];
+        const quantityToSell = investment.quantity;
+        const profitLoss = (salePrice - investment.purchase_price) * quantityToSell;
+        const roiPercent = ((salePrice - investment.purchase_price) / investment.purchase_price) * 100;
+
+        // Record the sale
+        await postgres.pool.query(`
+            INSERT INTO portfolio_sales (
+                investment_id, user_id, item_name, quantity_sold,
+                original_purchase_price, sale_price, marketplace,
+                profit_loss, roi_percent, notes
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `, [
+            investmentId,
+            investment.user_id,
+            investment.item_name,
+            quantityToSell,
+            investment.purchase_price,
+            salePrice,
+            investment.marketplace,
+            profitLoss,
+            roiPercent,
+            'Sold via Quick Sell'
+        ]);
+
+        // Mark investment as sold
+        await postgres.pool.query(`
+            UPDATE portfolio_investments
+            SET is_sold = true, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+        `, [investmentId]);
+
+        res.json({
+            success: true,
+            sale: {
+                investmentId,
+                itemName: investment.item_name,
+                quantitySold: quantityToSell,
+                salePrice,
+                profitLoss,
+                roiPercent: roiPercent.toFixed(2)
+            }
+        });
+    })
+);
+
+/**
+ * Quick Price Check - Get current prices for multiple items
+ * POST /api/portfolio/quick/price-check
+ */
+app.post('/api/portfolio/quick/price-check',
+    validate(z.object({
+        itemNames: z.array(z.string()).min(1).max(50)
+    })),
+    asyncHandler(async (req, res) => {
+        const { itemNames } = req.body;
+
+        const prices = [];
+        const notFound = [];
+
+        for (const itemName of itemNames) {
+            try {
+                const priceData = await postgres.getCachedPrice(itemName);
+
+                if (priceData && priceData.lowestPrice > 0) {
+                    prices.push({
+                        itemName,
+                        lowestPrice: priceData.lowestPrice,
+                        highestPrice: priceData.highestPrice,
+                        markets: priceData.prices,
+                        cachedAt: priceData.cached_at
+                    });
+                } else {
+                    notFound.push(itemName);
+                }
+            } catch (error) {
+                notFound.push(itemName);
+            }
+        }
+
+        res.json({
+            success: true,
+            found: prices.length,
+            notFound: notFound.length,
+            prices,
+            missing: notFound.length > 0 ? notFound : undefined
+        });
+    })
+);
+
+winston.info('Quick Actions API endpoints loaded');
+
+// ============================================================================
+// STEAM INVENTORY INTEGRATION
+// ============================================================================
+
 // Sync inventory to portfolio
 app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
     try {
@@ -4120,15 +4375,15 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
         // Add each item to portfolio
         for (const item of itemsToSync) {
             try {
-                // Skip non-weapon items (stickers, cases, etc.) if they have no wear
-                if (!item.wear_full && item.weapon_type !== 'Knife' && item.weapon_type !== 'Gloves') {
-                    winston.debug(`Skipping non-weapon item: ${item.market_name}`);
+                // Skip non-marketable items (can't be sold)
+                if (!item.marketable) {
+                    winston.debug(`Skipping non-marketable item: ${item.market_name}`);
                     continue;
                 }
 
                 // Get market price
                 let price = 0;
-                if (item.marketable && item.market_hash_name) {
+                if (item.market_hash_name) {
                     const cachedPrice = await postgres.getCachedPrice(item.market_hash_name);
                     price = cachedPrice?.lowestPrice || 0;
                 }
