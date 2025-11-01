@@ -18,18 +18,22 @@ Complete roadmap for enhancing the CS2 portfolio tracking and float inspection s
 - ✅ Investment scoring algorithm
 - ✅ Float rarity detection
 - ✅ Pattern detection (Blue Gems, etc.)
+- ✅ Quick Actions API (quick add, quick sell, quick price check)
+- ✅ Reverse sales (undo completed sales)
 
 ### Steam Integration
 - ✅ Fetch Steam inventory
 - ✅ Sync inventory to portfolio (auto or manual)
 - ✅ Inventory value calculation
 - ✅ Better Auth + Steam OAuth
+- ✅ Sync all marketable items (cases, stickers, graffiti, music kits)
 
 ### Pricing
 - ✅ Multi-market pricing (Buff163, Skinport, CSFloat, Steam)
 - ✅ Price caching (5 min TTL)
 - ✅ Price history tracking
 - ✅ Float-based price premium calculation
+- ✅ Price change tracking database schema (tables created, endpoints pending)
 
 ### Float Inspection
 - ✅ Single and bulk float inspection
@@ -45,12 +49,16 @@ Complete roadmap for enhancing the CS2 portfolio tracking and float inspection s
 ### 1. Real-Time Price Alerts
 **From:** CS2SkinTracker + User Request
 
+**Status:** 🟡 Partially Complete (Database schema created, endpoints pending)
+
 **Features:**
-- [ ] Price drop notifications (email/Discord/webhook)
-- [ ] Price spike alerts
+- [x] ✅ Database schema for price tracking (price_changes, price_alerts, user_notifications)
+- [ ] Price drop notifications API (email/Discord/webhook)
+- [ ] Price spike alerts API
 - [ ] Threshold-based triggers (e.g., alert if price drops 10%)
 - [ ] Watch all portfolio items automatically
 - [ ] Custom alert conditions
+- [ ] Background job to detect price changes
 
 **Implementation:**
 ```javascript
@@ -63,18 +71,13 @@ POST /api/alerts/create
 }
 ```
 
-**Database:**
+**Database:** ✅ **COMPLETED** (migration 006_price_changes.sql)
 ```sql
-CREATE TABLE price_alerts (
-  id SERIAL PRIMARY KEY,
-  user_id VARCHAR(255),
-  item_name TEXT,
-  alert_type VARCHAR(50),
-  threshold NUMERIC(5,2),
-  notification_method VARCHAR(50),
-  last_triggered TIMESTAMP,
-  is_active BOOLEAN DEFAULT true
-);
+-- Already created:
+CREATE TABLE price_changes (...);
+CREATE TABLE price_alerts (...);
+CREATE TABLE user_notifications (...);
+CREATE VIEW recent_price_changes (...);
 ```
 
 ---
@@ -132,46 +135,58 @@ Name,Wear,Float,Pattern,Price (Buff),Price (Steam),Stickers,Tradable
 
 ---
 
-### 4. Quick Actions API
+### 4. Quick Actions API ✅ **COMPLETED**
 **From:** CS2SkinTracker
 
 **Features:**
-- [ ] Fast add (minimal required fields)
-- [ ] Quick sell
-- [ ] Rapid price check
+- [x] ✅ Fast add (minimal required fields, up to 20 items)
+- [x] ✅ Quick sell (auto-calculates profit/ROI)
+- [x] ✅ Rapid price check (batch lookup up to 50 items)
 - [ ] Bulk update marketplace
 
-**Endpoints:**
+**Endpoints:** ✅ **IMPLEMENTED**
 ```javascript
 POST /api/portfolio/quick/add
 {
-  "items": ["AK-47 | Redline (FT)", "AWP | Asiimov (FT)"],
-  "marketplace": "Buff163"
-  // Auto-fetch current prices as purchase prices
+  "userId": "steam_12345",
+  "itemNames": ["AK-47 | Redline (FT)", "AWP | Asiimov (FT)"],
+  "marketplace": "Steam"  // Auto-fetch current prices as purchase prices
 }
 
 POST /api/portfolio/quick/sell/:investmentId
 {
-  "salePrice": 18.50  // Everything else auto-calculated
+  "salePrice": 18.50  // Everything else auto-calculated (profit, ROI)
+}
+
+POST /api/portfolio/quick/price-check
+{
+  "itemNames": ["AK-47 | Redline (FT)", ...]  // Up to 50 items
 }
 ```
 
 ---
 
-### 5. Reverse Sales (Undo)
+### 5. Reverse Sales (Undo) ✅ **COMPLETED**
 **From:** CS2SkinTracker
 
 **Features:**
-- [ ] Undo completed sales
-- [ ] Restore item to portfolio
-- [ ] Audit trail of reversals
+- [x] ✅ Undo completed sales
+- [x] ✅ Restore item to portfolio (marks investment as unsold)
+- [x] ✅ Delete sale record
+- [ ] Audit trail of reversals (future enhancement)
 
-**Endpoint:**
+**Endpoint:** ✅ **IMPLEMENTED**
 ```javascript
 POST /api/portfolio/sale/reverse/:saleId
 Response: {
   "success": true,
-  "restoredInvestment": { ... }
+  "message": "Sale reversed successfully",
+  "restoredInvestment": {
+    "id": 123,
+    "itemName": "AK-47 | Redline (FT)",
+    "quantity": 1,
+    "originalPrice": 15.00
+  }
 }
 ```
 
@@ -581,13 +596,13 @@ AI: "Based on market trends, I'd recommend holding. Knife prices typically rise 
 ### Must Have:
 1. ✅ Fix Steam inventory sync bugs
 2. ✅ Add user_steam_id to manual add
-3. ⏳ Price alerts system (email + Discord)
+3. 🟡 Price alerts system (database ✅, endpoints pending)
 4. ⏳ Portfolio analytics dashboard
 
 ### Should Have:
 1. CSV export with pricing
-2. Quick actions API
-3. Reverse sales functionality
+2. ✅ Quick actions API
+3. ✅ Reverse sales functionality
 
 ### Nice to Have:
 1. Leaderboard system
@@ -613,8 +628,9 @@ AI: "Based on market trends, I'd recommend holding. Knife prices typically rise 
 - **v1.1.0** - Steam integration added
 - **v1.2.0** - Better Auth integration
 - **v1.3.0** - Multi-market pricing
-- **v1.4.0** - Investment scoring (current)
-- **v1.5.0** - Price alerts (planned)
+- **v1.4.0** - Investment scoring
+- **v1.5.0** - Quick Actions, Reverse Sales, Price Tracking Infrastructure (current)
+- **v1.6.0** - Price alerts & notifications (planned)
 - **v2.0.0** - Analytics dashboard (planned)
 
 ---
