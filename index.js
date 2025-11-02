@@ -2711,35 +2711,35 @@ app.get('/api/items/metadata/:itemName', async (req, res) => {
     }
 });
 
-// Search items
-app.get('/api/items/search', async (req, res) => {
-    try {
-        const query = req.query.q || req.query.query;
-        const limit = parseInt(req.query.limit) || 20;
-
-        if (!query) {
-            return res.status(400).json({
-                error: 'Missing search query',
-                message: 'Provide ?q=query parameter'
-            });
-        }
-
-        const results = await csgoAPI.searchItems(query, limit);
-
-        res.json({
-            success: true,
-            query,
-            count: results.length,
-            results
-        });
-    } catch (error) {
-        winston.error('Item search error:', error);
-        res.status(500).json({
-            error: 'Failed to search items',
-            message: error.message
-        });
-    }
-});
+// OLD Search items endpoint - DEPRECATED (replaced by CS2 Item Cache version below)
+// app.get('/api/items/search', async (req, res) => {
+//     try {
+//         const query = req.query.q || req.query.query;
+//         const limit = parseInt(req.query.limit) || 20;
+//
+//         if (!query) {
+//             return res.status(400).json({
+//                 error: 'Missing search query',
+//                 message: 'Provide ?q=query parameter'
+//             });
+//         }
+//
+//         const results = await csgoAPI.searchItems(query, limit);
+//
+//         res.json({
+//             success: true,
+//             query,
+//             count: results.length,
+//             results
+//         });
+//     } catch (error) {
+//         winston.error('Item search error:', error);
+//         res.status(500).json({
+//             error: 'Failed to search items',
+//             message: error.message
+//         });
+//     }
+// });
 
 // Get case contents
 app.get('/api/items/case/:caseName', async (req, res) => {
@@ -4348,6 +4348,91 @@ app.post('/api/portfolio/quick/price-check',
 winston.info('Quick Actions API endpoints loaded');
 
 // ============================================================================
+// CS2 ITEM SEARCH API
+// ============================================================================
+
+const cs2ItemCache = require('./utils/cs2ItemCache');
+
+/**
+ * Search CS2 items - Used for autocomplete and item selection
+ * GET /api/items/search?q=AK-47&limit=20
+ * GET /api/items/search (returns all items, limited by limit param)
+ */
+app.get('/api/items/search',
+    validateQuery(z.object({
+        q: z.string().optional().default(''),
+        limit: z.union([z.string().regex(/^\d+$/), z.number()]).transform(Number).optional().default(20)
+    })),
+    asyncHandler(async (req, res) => {
+        const { q: query, limit } = req.query;
+
+        const results = await cs2ItemCache.search(query, Math.min(limit, 100));
+
+        res.json({
+            success: true,
+            query,
+            count: results.length,
+            items: results
+        });
+    })
+);
+
+/**
+ * Get item by exact name
+ * GET /api/items/:itemName
+ */
+app.get('/api/items/:itemName',
+    asyncHandler(async (req, res) => {
+        const { itemName } = req.params;
+
+        const item = await cs2ItemCache.getItemByName(decodeURIComponent(itemName));
+
+        if (!item) {
+            throw new ApiError(404, 'Item not found', 'ITEM_NOT_FOUND');
+        }
+
+        res.json({
+            success: true,
+            item
+        });
+    })
+);
+
+/**
+ * Get cache statistics
+ * GET /api/items/cache/stats
+ */
+app.get('/api/items/cache/stats',
+    asyncHandler(async (req, res) => {
+        const stats = cs2ItemCache.getStats();
+
+        res.json({
+            success: true,
+            cache: stats
+        });
+    })
+);
+
+/**
+ * Force refresh cache (admin use)
+ * POST /api/items/cache/refresh
+ */
+app.post('/api/items/cache/refresh',
+    asyncHandler(async (req, res) => {
+        await cs2ItemCache.forceRefresh();
+        const stats = cs2ItemCache.getStats();
+
+        res.json({
+            success: true,
+            message: 'Cache refreshed successfully',
+            cache: stats
+        });
+    })
+);
+
+winston.info('CS2 Item Search API endpoints loaded');
+
+// ============================================================================
 // STEAM INVENTORY INTEGRATION
 // ============================================================================
 
@@ -4527,6 +4612,17 @@ winston.info('Error handlers and rate limiting configured');
 const http_server = require('http').Server(app);
 http_server.listen(CONFIG.http.port);
 winston.info('Listening for HTTP on port: ' + CONFIG.http.port);
+
+// Initialize CS2 item cache
+(async () => {
+    try {
+        await cs2ItemCache.initialize();
+        winston.info('CS2 item cache initialized successfully');
+    } catch (error) {
+        winston.error('Failed to initialize CS2 item cache:', error.message);
+        winston.warn('Item search functionality may be limited until cache is populated');
+    }
+})();
 
 queue.process(CONFIG.logins.length, botController, async (job) => {
     const itemData = await botController.lookupFloat(job.data.link);
