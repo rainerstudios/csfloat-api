@@ -105,16 +105,10 @@ app.use(function (error, req, res, next) {
 });
 
 // =====================================================================
-// STEAM AUTHENTICATION SETUP
+// STEAM INVENTORY (for float inspection only - no auth needed)
 // =====================================================================
-// Better Auth authentication (from Next.js frontend)
-const auth = require('./lib/auth');
-const { requireAuth, optionalAuth } = auth;
+// Note: Portfolio-related inventory sync moved to Investment API (port 3003)
 const steamInventory = require('./lib/steam-inventory');
-
-// Initialize auth with postgres connection
-auth.initialize(postgres);
-winston.info('Better Auth authentication configured');
 
 
 
@@ -269,7 +263,7 @@ app.post('/bulk', (req, res) => {
     }
 });
 
-app.get('/stats', (req, res) => {
+app.get('/api/stats', (req, res) => {
     res.json({
         bots_online: botController.getReadyAmount(),
         bots_total: botController.bots.length,
@@ -1199,9 +1193,11 @@ app.get('/api/inventory/:steamId', async (req, res) => {
 });
 
 // ============================================================================
-// PORTFOLIO MANAGEMENT ENDPOINTS
+// PORTFOLIO MANAGEMENT ENDPOINTS - MOVED TO INVESTMENT API
 // ============================================================================
-
+// NOTE: All portfolio endpoints have been moved to cs2-investment-api (port 3003)
+// This includes: add, get, stats, sales, deletions, allocations, snapshots, etc.
+if (false) {
 /**
  * Add new investment to portfolio
  * POST /api/portfolio/add
@@ -2624,8 +2620,9 @@ function calculateDiversityScore(itemTypes, totalItems) {
     const score = Math.max(1, Math.min(10, categoryScore - dominancePenalty));
     return score;
 }
+} // End of disabled portfolio endpoints block
 
-winston.info('Portfolio endpoints loaded successfully');
+// winston.info('Portfolio endpoints loaded successfully');
 
 // =====================================================================
 // CSGO-API INTEGRATION ENDPOINTS
@@ -2949,9 +2946,11 @@ app.get('/api/pricing/fee-examples', (req, res) => {
 winston.info('Steam fee calculation endpoints loaded');
 
 // =====================================================================
-// PORTFOLIO SNAPSHOTS & ADVANCED FEATURES
+// PORTFOLIO SNAPSHOTS & ADVANCED FEATURES - MOVED TO INVESTMENT API
 // =====================================================================
-
+// NOTE: All advanced portfolio features moved to cs2-investment-api (port 3003)
+// This includes: snapshots, auth, webhooks, alerts, batch updates, etc.
+if (false) {
 // Create portfolio snapshot
 app.post('/api/portfolio/snapshot/create/:userId', async (req, res) => {
     try {
@@ -3830,114 +3829,21 @@ app.delete('/api/webhooks/discord/:webhookId', async (req, res) => {
 winston.info('Discord webhook endpoints loaded');
 
 // =====================================================================
-// PRICE ALERT ENDPOINTS
+// PRICE ALERT ENDPOINTS - MOVED TO INVESTMENT API
 // =====================================================================
+// NOTE: Price alerts have been moved to the Investment API (port 3003)
+// The enhanced version includes:
+// - Smart status calculation (pending/active/triggered)
+// - Distance to target tracking
+// - Statistics aggregation
+// - Update/modify alerts
+// - Background job for checking alerts
+//
+// Routes via Nginx: https://api.cs2floatchecker.com/api/alerts/*
+// See: /var/www/cs2-investment-api/routes/alerts.js
+// Docs: /var/www/PRICE_ALERTS_API.md
 
-// Create price alert
-app.post('/api/alerts/create', async (req, res) => {
-    try {
-        const { user_id, item_name, target_price, condition, marketplace } = req.body;
-
-        if (!user_id || !item_name || !target_price || !condition) {
-            return res.status(400).json({
-                error: 'Missing required fields',
-                message: 'Required: user_id, item_name, target_price, condition'
-            });
-        }
-
-        if (!['above', 'below'].includes(condition)) {
-            return res.status(400).json({
-                error: 'Invalid condition',
-                message: 'Condition must be "above" or "below"'
-            });
-        }
-
-        const result = await postgres.pool.query(`
-            INSERT INTO price_alerts (
-                user_id, item_name, target_price, condition, marketplace
-            ) VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-        `, [user_id, item_name, target_price, condition, marketplace || 'steam']);
-
-        res.json({
-            success: true,
-            message: 'Price alert created',
-            alert: result.rows[0]
-        });
-    } catch (error) {
-        winston.error('Create alert error:', error);
-        res.status(500).json({
-            error: 'Failed to create alert',
-            message: error.message
-        });
-    }
-});
-
-// Get user's price alerts
-app.get('/api/alerts/:userId', async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const { active_only = 'true' } = req.query;
-
-        let query = `
-            SELECT * FROM price_alerts
-            WHERE user_id = $1
-        `;
-
-        if (active_only === 'true') {
-            query += ' AND is_active = true';
-        }
-
-        query += ' ORDER BY created_at DESC';
-
-        const result = await postgres.pool.query(query, [userId]);
-
-        res.json({
-            success: true,
-            count: result.rows.length,
-            alerts: result.rows
-        });
-    } catch (error) {
-        winston.error('Get alerts error:', error);
-        res.status(500).json({
-            error: 'Failed to get alerts',
-            message: error.message
-        });
-    }
-});
-
-// Delete price alert
-app.delete('/api/alerts/:alertId', async (req, res) => {
-    try {
-        const { alertId } = req.params;
-
-        const result = await postgres.pool.query(`
-            DELETE FROM price_alerts
-            WHERE id = $1
-            RETURNING id, item_name, target_price
-        `, [alertId]);
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                error: 'Alert not found'
-            });
-        }
-
-        res.json({
-            success: true,
-            message: 'Alert deleted',
-            alert: result.rows[0]
-        });
-    } catch (error) {
-        winston.error('Delete alert error:', error);
-        res.status(500).json({
-            error: 'Failed to delete alert',
-            message: error.message
-        });
-    }
-});
-
-winston.info('Price alert endpoints loaded');
+// winston.info('Price alert endpoints loaded'); // Disabled - moved to Investment API
 
 // =====================================================================
 // BATCH PRICE UPDATE ENDPOINTS
@@ -4089,18 +3995,22 @@ function calculateTradeRisk(history) {
         lastTradeDate: tradeDate.toISOString()
     };
 }
+} // End of disabled portfolio advanced features block
 
 // =====================================================================
 // STEAM AUTHENTICATION ROUTES
 // =====================================================================
 // REMOVED: Old Passport.js Steam auth routes
 // steamAuth.setupAuthRoutes(app, postgres);
-winston.info('Using Better Auth for authentication (configured in Next.js frontend)');
+// Note: Better Auth removed from CSFloat API - only needed in Investment API
+// CSFloat API is public (float inspection for 500 extension users)
 
 // =====================================================================
-// STEAM INVENTORY ENDPOINTS
+// STEAM INVENTORY ENDPOINTS - MOVED TO INVESTMENT API
 // =====================================================================
-
+// NOTE: These endpoints have been moved to cs2-investment-api on port 3003
+// They require Better Auth which is only enabled on the Investment API
+/*
 // Get user's CS2 inventory
 app.get('/api/steam/inventory/:steamId?', requireAuth, async (req, res) => {
     try {
@@ -4154,15 +4064,19 @@ app.get('/api/steam/inventory/:steamId?/value', requireAuth, async (req, res) =>
         });
     }
 });
+*/
 
 // ============================================================================
-// QUICK ACTIONS API
+// QUICK ACTIONS API - MOVED TO INVESTMENT API
 // ============================================================================
-
+// NOTE: These endpoints have been moved to cs2-investment-api on port 3003
+// They are portfolio features and belong in the Investment API
+/*
 /**
  * Quick Add Investment - Streamlined endpoint for fast item addition
  * POST /api/portfolio/quick/add
  */
+/*
 app.post('/api/portfolio/quick/add',
     validate(z.object({
         userId: z.string().min(1),
@@ -4235,6 +4149,7 @@ app.post('/api/portfolio/quick/add',
  * Quick Record Sale - Fast sale recording
  * POST /api/portfolio/quick/sell/:investmentId
  */
+/*
 app.post('/api/portfolio/quick/sell/:investmentId',
     validateParams(z.object({
         investmentId: z.string().regex(/^\d+$/).transform(Number)
@@ -4305,6 +4220,7 @@ app.post('/api/portfolio/quick/sell/:investmentId',
  * Quick Price Check - Get current prices for multiple items
  * POST /api/portfolio/quick/price-check
  */
+/*
 app.post('/api/portfolio/quick/price-check',
     validate(z.object({
         itemNames: z.array(z.string()).min(1).max(50)
@@ -4344,8 +4260,9 @@ app.post('/api/portfolio/quick/price-check',
         });
     })
 );
+*/
 
-winston.info('Quick Actions API endpoints loaded');
+// winston.info('Quick Actions API endpoints loaded');
 
 // ============================================================================
 // CS2 ITEM SEARCH API
@@ -4433,30 +4350,31 @@ app.post('/api/items/cache/refresh',
 winston.info('CS2 Item Search API endpoints loaded');
 
 // ============================================================================
-// STEAM INVENTORY INTEGRATION
+// STEAM INVENTORY INTEGRATION - MOVED TO INVESTMENT API
 // ============================================================================
-
+// NOTE: These endpoints have been moved to cs2-investment-api on port 3003
+/*
 // Sync inventory to portfolio
 app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
     try {
         const steamId = req.user.steam_id;
         const { selected_items = [] } = req.body;
-        
+
         // Get inventory
         const inventoryResult = await steamInventory.getSteamInventory(steamId);
-        
+
         if (!inventoryResult.success) {
             return res.status(400).json(inventoryResult);
         }
-        
+
         let added = 0;
         let errors = [];
-        
+
         // Filter items to sync (either all or selected)
         const itemsToSync = selected_items.length > 0
             ? inventoryResult.items.filter(item => selected_items.includes(item.assetid))
             : inventoryResult.items;
-        
+
         // Add each item to portfolio
         for (const item of itemsToSync) {
             try {
@@ -4516,7 +4434,7 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
                 });
             }
         }
-        
+
         res.json({
             success: true,
             message: `Synced ${added} items from Steam inventory`,
@@ -4524,7 +4442,7 @@ app.post('/api/steam/inventory/sync', requireAuth, async (req, res) => {
             total_items: itemsToSync.length,
             errors: errors.length > 0 ? errors : undefined
         });
-        
+
     } catch (error) {
         winston.error('Inventory sync error:', error);
         res.status(500).json({
@@ -4551,8 +4469,9 @@ app.get('/api/steam/inventory/test/:steamId', async (req, res) => {
         });
     }
 });
+*/
 
-winston.info('Steam inventory endpoints loaded');
+// winston.info('Steam inventory endpoints loaded');
 
 // =====================================================================
 // HEALTH CHECK ENDPOINT
