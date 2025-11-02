@@ -68,6 +68,11 @@ async function recordItemSnapshot(itemName, priceData) {
         const lowestPrice = priceData.lowestPrice || null;
         const highestPrice = priceData.highestPrice || null;
 
+        // Get listings counts
+        const buff163Listings = priceData.prices?.buff163?.listings || null;
+        const csfloatListings = priceData.prices?.csfloat?.listings || null;
+        const skinportListings = priceData.prices?.skinport?.listings || null;
+
         // Only record if we have at least one price
         const hasPrices = [steamPrice, buff163Price, csfloatPrice, skinportPrice, csdealsPrice]
             .some(price => price !== null && price > 0);
@@ -75,6 +80,37 @@ async function recordItemSnapshot(itemName, priceData) {
         if (!hasPrices) {
             logger.warn(`No valid prices for ${itemName}, skipping snapshot`);
             return false;
+        }
+
+        // Get previous snapshot to calculate volume (24h ago)
+        const previousSnapshot = await pool.query(`
+            SELECT buff163_listings, csfloat_listings, skinport_listings
+            FROM price_history
+            WHERE item_name = $1
+            AND recorded_at >= NOW() - INTERVAL '25 hours'
+            AND recorded_at <= NOW() - INTERVAL '23 hours'
+            ORDER BY recorded_at DESC
+            LIMIT 1
+        `, [itemName]);
+
+        // Calculate volume (listings decreased = items sold)
+        let volume24h = 0;
+        if (previousSnapshot.rows.length > 0) {
+            const prev = previousSnapshot.rows[0];
+
+            // Sum up listing decreases (items sold) across all marketplaces
+            if (prev.buff163_listings && buff163Listings) {
+                const diff = prev.buff163_listings - buff163Listings;
+                if (diff > 0) volume24h += diff;
+            }
+            if (prev.csfloat_listings && csfloatListings) {
+                const diff = prev.csfloat_listings - csfloatListings;
+                if (diff > 0) volume24h += diff;
+            }
+            if (prev.skinport_listings && skinportListings) {
+                const diff = prev.skinport_listings - skinportListings;
+                if (diff > 0) volume24h += diff;
+            }
         }
 
         await pool.query(`
@@ -87,8 +123,12 @@ async function recordItemSnapshot(itemName, priceData) {
                 csdeals_price,
                 lowest_price,
                 highest_price,
+                buff163_listings,
+                csfloat_listings,
+                skinport_listings,
+                volume_24h,
                 recorded_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
         `, [
             itemName,
             steamPrice,
@@ -97,7 +137,11 @@ async function recordItemSnapshot(itemName, priceData) {
             skinportPrice,
             csdealsPrice,
             lowestPrice,
-            highestPrice
+            highestPrice,
+            buff163Listings,
+            csfloatListings,
+            skinportListings,
+            volume24h
         ]);
 
         return true;
