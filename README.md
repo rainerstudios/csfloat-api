@@ -12,7 +12,12 @@
 [![Chrome Web Store](https://img.shields.io/chrome-web-store/d/jjicbefpemnphinccgikpdaagjebbnhg.svg)](https://chrome.google.com/webstore/detail/csgofloat-market-checker/jjicbefpemnphinccgikpdaagjebbnhg)
 [![Docker](https://img.shields.io/docker/pulls/step7750/csgofloat.svg)](https://hub.docker.com/r/step7750/csgofloat)
 
-CSGOFloat is a free and open source API service that allows you to obtain the float and paint seed of any CSGO item using its inspect link.
+CSGOFloat is a free and open source API service that allows you to:
+- Obtain float values and paint seeds for CS2 items using inspect links
+- Get real-time marketplace prices from multiple sources (Buff163, Skinport, CSFloat, CS.MONEY, Steam)
+- Access historical price charts and market trends
+- Calculate float rarity percentiles and price premiums
+- Process multiple items in batch for optimal performance
 
 ### Repo Links
 
@@ -21,20 +26,28 @@ CSGOFloat is a free and open source API service that allows you to obtain the fl
 [CSGOFloat-Website](https://github.com/Step7750/CSGOFloat-Website)
 
 ## Table of Contents
-  * [API](https://github.com/Step7750/CSGOFloat#api)
-  	* [`GET /`](https://github.com/Step7750/CSGOFloat#get-)
-		* [Examples](https://github.com/Step7750/CSGOFloat#examples)
-	* [`GET /` (Using an Inspect URL)](https://github.com/Step7750/CSGOFloat#get--using-an-inspect-url)
-		* [Examples](https://github.com/Step7750/CSGOFloat#examples-1)
-	* [Reply](https://github.com/Step7750/CSGOFloat#reply)
-	* [Errors](https://github.com/Step7750/CSGOFloat#errors)
-  * [How to Install](https://github.com/Step7750/CSGOFloat#how-to-install)
-  	* [Docker](https://github.com/Step7750/CSGOFloat#docker)
-	* [Manual](https://github.com/Step7750/CSGOFloat#manual)
-	* [Steps](https://github.com/Step7750/CSGOFloat#steps)
-	* [How to First Login a Bot](https://github.com/Step7750/CSGOFloat#how-to-first-login-a-bot)
-	* [Breaking Changes](https://github.com/Step7750/CSGOFloat#breaking-changes)
-	* [Args](https://github.com/Step7750/CSGOFloat#args)
+  * [API](#api)
+  	* [Float Inspection Endpoints](#api)
+  		* [`GET /`](#get-)
+		* [`GET /` (Using an Inspect URL)](#get--using-an-inspect-url)
+		* [`POST /bulk`](#post-bulk)
+		* [`GET /api/stats`](#get-apistats)
+	* [Pricing & Market Data Endpoints](#pricing--market-data-endpoints)
+		* [`GET /api/price/:marketHashName`](#get-apipricemarketHashName)
+		* [`GET /api/price-history/:marketHashName`](#get-apiprice-historymarketHashName)
+		* [`GET /api/recent-sales/:marketHashName`](#get-apirecent-salesmarketHashName)
+	* [Batch Processing Endpoints](#batch-processing-endpoints)
+		* [`POST /api/batch/prices`](#post-apibatchprices)
+		* [`POST /api/batch/rarity`](#post-apibatchrarity)
+		* [`POST /api/batch/float-premium`](#post-apibatchfloat-premium)
+	* [Additional Documentation](#additional-documentation)
+	* [Errors](#errors)
+  * [How to Install](#how-to-install)
+  	* [Docker](#docker)
+	* [Manual](#manual)
+	* [How to First Login a Bot](#how-to-first-login-a-bot)
+	* [Breaking Changes](#breaking-changes)
+	* [Args](#args)
 
 
 # API
@@ -186,7 +199,7 @@ Example Response:
 }
 ```
 
-### `GET /stats`
+### `GET /api/stats`
 
 Gives some data on the current status of your bots and queue.
 
@@ -194,6 +207,236 @@ Example:
 ```json
 {"bots_online":100,"bots_total":100,"queue_size":20,"queue_concurrency":100}
 ```
+
+---
+
+## Pricing & Market Data Endpoints
+
+### `GET /api/price/:marketHashName`
+
+Get current marketplace prices for a specific CS2 item.
+
+**Parameters:**
+- `marketHashName` - URL-encoded item name (e.g., "AK-47 | Redline (Field-Tested)")
+
+**Example:**
+```
+GET /api/price/AK-47%20%7C%20Redline%20%28Field-Tested%29
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "item": "AK-47 | Redline (Field-Tested)",
+  "prices": {
+    "buff163": {
+      "price_usd": 28.49,
+      "price_cny": 202.96,
+      "listings": 8387,
+      "url": "https://buff.163.com/..."
+    },
+    "skinport": {
+      "price_usd": 33.40,
+      "listings": 425,
+      "url": "https://skinport.com/..."
+    },
+    "csfloat": { ... },
+    "marketCsgo": { ... },
+    "steam": { ... }
+  },
+  "lowestPrice": 28.49,
+  "highestPrice": 68.00
+}
+```
+
+### `GET /api/price-history/:marketHashName`
+
+Get historical price charts for a specific item (7, 14, or 30 days).
+
+**Parameters:**
+- `marketHashName` - URL-encoded item name
+- `timeframe` (query) - Optional: "7", "14", or "30" (default: "30")
+
+**Example:**
+```
+GET /api/price-history/AK-47%20%7C%20Redline%20%28Field-Tested%29?timeframe=7
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "name": "AK-47 | Redline (Field-Tested)",
+  "timeframe": "7 days",
+  "markets": [
+    {
+      "name": "Buff",
+      "type": "line",
+      "prices": [
+        {
+          "date": "2025-11-07T09:00:00.000Z",
+          "price": 32.93,
+          "quantity": 8275
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /api/recent-sales/:marketHashName`
+
+Get recent sales data for a specific item.
+
+**Parameters:**
+- `marketHashName` - URL-encoded item name
+
+**Example:**
+```
+GET /api/recent-sales/AK-47%20%7C%20Redline%20%28Field-Tested%29
+```
+
+---
+
+## Batch Processing Endpoints
+
+Process multiple items in a single request for improved performance.
+
+### `POST /api/batch/prices`
+
+Get marketplace prices for multiple items at once (up to 50 items).
+
+**Request Body:**
+```json
+{
+  "items": [
+    "AK-47 | Redline (Field-Tested)",
+    "AWP | Asiimov (Field-Tested)",
+    "M4A4 | Howl (Field-Tested)"
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total": 3,
+  "successful": 3,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "itemName": "AK-47 | Redline (Field-Tested)",
+      "prices": { ... },
+      "lowestPrice": 28.49,
+      "cached": true
+    }
+  ],
+  "errors": []
+}
+```
+
+**Performance:** 8.5x faster than individual requests. Automatic 5-minute caching.
+
+### `POST /api/batch/rarity`
+
+Calculate float rarity percentiles for multiple items (up to 100 items).
+
+**Request Body:**
+```json
+{
+  "items": [
+    {
+      "defindex": 7,
+      "paintindex": 279,
+      "floatvalue": 0.18
+    },
+    {
+      "defindex": 9,
+      "paintindex": 282,
+      "floatvalue": 0.25
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total": 2,
+  "successful": 2,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "rarity": {
+        "percentile": 15.2,
+        "totalSeen": 28450,
+        "betterCount": 4325,
+        "rarityTier": "common",
+        "score": 15
+      }
+    }
+  ],
+  "errors": []
+}
+```
+
+**Rarity Tiers:** legendary (0-1%), epic (1-5%), rare (5-15%), uncommon (15-40%), common (40-100%)
+
+### `POST /api/batch/float-premium`
+
+Calculate float-based price premiums for multiple items (up to 50 items).
+
+**Request Body:**
+```json
+{
+  "items": [
+    {
+      "marketHashName": "AK-47 | Redline (Field-Tested)",
+      "floatValue": 0.18
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "total": 1,
+  "successful": 1,
+  "failed": 0,
+  "results": [
+    {
+      "index": 0,
+      "premium": {
+        "success": true,
+        "yourFloat": 0.18,
+        "estimatedPrice": "38.60",
+        "marketAverage": "38.60",
+        "premiumPercent": "0.00",
+        "dealQuality": "fair",
+        "recommendation": "📊 Standard float. Market average price expected."
+      }
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
+## Additional Documentation
+
+For complete documentation and examples, see:
+- [BULK_FLOAT_INSPECTION.md](./BULK_FLOAT_INSPECTION.md) - Complete bulk endpoint guide
+- [BATCH_API.md](./BATCH_API.md) - Complete batch processing guide
+- [HYBRID_PRICE_SYSTEM.md](./HYBRID_PRICE_SYSTEM.md) - Price system architecture
+- [PORTFOLIO_API_DOCS.md](./PORTFOLIO_API_DOCS.md) - Portfolio management endpoints
 
 ## Errors
 

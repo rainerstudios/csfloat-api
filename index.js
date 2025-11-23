@@ -305,7 +305,7 @@ app.post('/api/batch/prices', async (req, res) => {
                 }
 
                 // Fetch from API if not cached
-                const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+                const apiKey = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
                 const url = `https://skin.broker/api/v1/item?marketHashName=${encodeURIComponent(itemName)}&key=${apiKey}`;
 
                 const response = await fetch(url);
@@ -690,7 +690,7 @@ app.get('/api/price/:marketHashName', async (req, res) => {
         winston.debug(`Price cache MISS for ${marketHashName}, fetching from API`);
 
         // Use Skin.Broker authenticated API for detailed pricing
-        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
         const url = `https://skin.broker/api/v1/item?marketHashName=${encodeURIComponent(marketHashName)}&key=${apiKey}`;
 
         const response = await fetch(url);
@@ -879,7 +879,7 @@ app.get('/api/price-history/:marketHashName', async (req, res) => {
             return res.status(400).json({ error: 'Invalid timeframe. Use 7, 14, or 30' });
         }
 
-        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
         const url = `https://skin.broker/api/v2/item/chart?marketHashName=${encodeURIComponent(marketHashName)}&timeframe=${timeframe}&key=${apiKey}`;
 
         const response = await fetch(url);
@@ -932,7 +932,7 @@ app.get('/api/recent-sales/:marketHashName', async (req, res) => {
     try {
         const marketHashName = decodeURIComponent(req.params.marketHashName);
 
-        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
         const url = `https://skin.broker/api/v1/item/sales?marketHashName=${encodeURIComponent(marketHashName)}&key=${apiKey}`;
 
         const response = await fetch(url);
@@ -1079,7 +1079,7 @@ app.get('/api/float-price-premium/:marketHashName/:floatValue', async (req, res)
 // Skin.Broker - Market Statistics
 app.get('/api/market-stats', async (req, res) => {
     try {
-        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
         const url = `https://skin.broker/api/v1/market/metrics?key=${apiKey}`;
 
         const response = await fetch(url);
@@ -1140,7 +1140,7 @@ app.get('/api/inventory/:steamId', async (req, res) => {
             return res.status(400).json({ error: 'Invalid Steam ID' });
         }
 
-        const apiKey = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+        const apiKey = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
         const url = `https://skin.broker/api/v2/inventory?steamId=${steamId}&key=${apiKey}`;
 
         const response = await fetch(url);

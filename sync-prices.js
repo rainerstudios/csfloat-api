@@ -14,7 +14,7 @@ const gameData = require('./lib/game_data');
 winston.level = 'info';
 
 const postgres = new Postgres(CONFIG.database_url, false);
-const API_KEY = CONFIG.skinbroker_api_key || 'sbv1eDIL09Ccfvj3KTcgMVTwCKk8echbPWEdX60CgrsLiJl4NGuL';
+const API_KEY = CONFIG.skinbroker_api_key || 'sbv1UvaYyGLofmw26Huqqadjkqi3TwvwTzPn6mDaRQD3Fta6hUOc';
 
 // Rate limiting: 1000 requests/hour = 1 request per 3.6 seconds
 const RATE_LIMIT_MS = 4000; // 4 seconds to be safe

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS portfolio_investments (
     -- Float data (from existing items table)
     float_value DECIMAL(10,8),
     pattern_index INTEGER,
+    imageurl TEXT, -- Image URL from CSFloat API or Item Search API
     defindex INTEGER,
     paintindex INTEGER,
     wear TEXT, -- 'FN', 'MW', 'FT', 'WW', 'BS'
