@@ -19,7 +19,9 @@ const winston = require('winston'),
     postgres = new (require('./lib/postgres'))(CONFIG.database_url, CONFIG.enable_bulk_inserts),
     gameData = new (require('./lib/game_data'))(CONFIG.game_files_update_interval, CONFIG.enable_game_file_updates),
     errors = require('./errors'),
-    Job = require('./lib/job');
+    Job = require('./lib/job'),
+    RequestDeduplicator = require('./lib/request_deduplicator'),
+    deduplicator = new RequestDeduplicator();
 
 if (CONFIG.max_simultaneous_requests === undefined) {
     CONFIG.max_simultaneous_requests = 1;
@@ -269,6 +271,7 @@ app.get('/api/stats', (req, res) => {
         bots_total: botController.bots.length,
         queue_size: queue.queue.length,
         queue_concurrency: queue.concurrency,
+        deduplication: deduplicator.getStats(),
     });
 });
 
@@ -4544,7 +4547,14 @@ winston.info('Listening for HTTP on port: ' + CONFIG.http.port);
 })();
 
 queue.process(CONFIG.logins.length, botController, async (job) => {
-    const itemData = await botController.lookupFloat(job.data.link);
+    const inspectUrl = job.data.link.getInspectUrl();
+
+    // Use deduplicator to prevent duplicate Valve API calls
+    const itemData = await deduplicator.deduplicate(inspectUrl, async () => {
+        winston.debug(`[Dedup] Making Valve API call for ${job.data.link.getParams().a}`);
+        return await botController.lookupFloat(job.data.link);
+    });
+
     winston.debug(`Received itemData for ${job.data.link.getParams().a}`);
 
     // Save and remove the delay attribute
