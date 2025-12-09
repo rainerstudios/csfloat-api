@@ -4547,7 +4547,7 @@ winston.info('Listening for HTTP on port: ' + CONFIG.http.port);
 })();
 
 queue.process(CONFIG.logins.length, botController, async (job) => {
-    const inspectUrl = job.data.link.getInspectUrl();
+    const inspectUrl = job.data.link.getLink();
 
     // Use deduplicator to prevent duplicate Valve API calls
     const itemData = await deduplicator.deduplicate(inspectUrl, async () => {
