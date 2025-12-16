@@ -4,7 +4,7 @@
 # Checks if bots are online and sends Discord webhook if any are offline
 
 # Configuration
-API_URL="http://localhost:3002/stats"
+API_URL="http://localhost:3002/api/stats"
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1430175040204181520/2DVFasIxOCS_khJOGuELpejAnxpk3Ho5evI7qOM5aHXXQzrfkcFdTnjDSKnYWqMdUyVo"
 STATE_FILE="/tmp/csfloat-bot-monitor-state"
 

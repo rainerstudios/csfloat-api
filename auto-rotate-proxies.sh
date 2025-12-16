@@ -141,4 +141,4 @@ echo "[$TIMESTAMP] Proxy rotation completed successfully"
 sleep 5
 echo ""
 echo "Bot status after rotation:"
-curl -s http://localhost:3002/stats | grep -o '"bots_online":[0-9]*' || echo "Could not fetch status"
+curl -s http://localhost:3002/api/stats | grep -o '"bots_online":[0-9]*' || echo "Could not fetch status"

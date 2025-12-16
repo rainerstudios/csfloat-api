@@ -2,7 +2,7 @@
 
 # Monitor API capacity and alert when scaling needed
 
-API_URL="http://localhost:3002/stats"
+API_URL="http://localhost:3002/api/stats"
 
 while true; do
     # Get stats
