@@ -1593,7 +1593,7 @@ app.get('/api/steam/inventory/:steamId?', async (req, res) => {
         const isPreview = req.query.preview === 'true';
 
         // In preview mode, steamId is required in params (public lookup)
-        const steamId = req.params.steamId;
+        let steamId = req.params.steamId;
 
         if (!steamId) {
             return res.status(400).json({
@@ -1610,9 +1610,43 @@ app.get('/api/steam/inventory/:steamId?', async (req, res) => {
             });
         }
 
+        // Resolve vanity URL to numeric Steam ID if needed
+        if (!/^\d{17}$/.test(steamId)) {
+            // Not a 17-digit Steam ID, try to resolve vanity URL
+            try {
+                const STEAM_API_KEY = CONFIG.steam_api_key;
+                if (STEAM_API_KEY) {
+                    const vanityUrl = steamId.replace(/.*\/id\/([^\/\?]+).*/, '$1').replace(/.*\/profiles\/([^\/\?]+).*/, '$1');
+                    const resolveResponse = await fetch(`https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${STEAM_API_KEY}&vanityurl=${vanityUrl}`);
+                    const resolveData = await resolveResponse.json();
+
+                    if (resolveData.response?.success === 1) {
+                        steamId = resolveData.response.steamid;
+                        winston.info(`Resolved vanity URL ${vanityUrl} to Steam ID ${steamId}`);
+                    } else {
+                        return res.status(404).json({
+                            success: false,
+                            error: 'Could not resolve Steam ID. Make sure the profile exists and is public.'
+                        });
+                    }
+                } else {
+                    return res.status(500).json({
+                        success: false,
+                        error: 'Steam API key not configured'
+                    });
+                }
+            } catch (error) {
+                winston.error('Error resolving vanity URL:', error);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to resolve vanity URL'
+                });
+            }
+        }
+
         const result = await steamInventory.getSteamInventory(steamId);
 
-        // Add steamId to response for client convenience
+        // Add numeric steamId to response for client convenience
         if (result.success) {
             result.steamId = steamId;
         }
