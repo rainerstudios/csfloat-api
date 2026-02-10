@@ -697,13 +697,39 @@ app.get('/api/price/:marketHashName', async (req, res) => {
 
         if (!response.ok) {
             winston.warn(`Skin.Broker API returned status ${response.status}`);
+
+            // Handle rate limiting - try to return stale cache if available
+            if (response.status === 429) {
+                const staleCache = await postgres.getCachedPrice(marketHashName, true); // Get even expired cache
+                if (staleCache) {
+                    winston.info(`Returning stale cache for ${marketHashName} due to rate limit`);
+                    staleCache.cached = true;
+                    staleCache.stale = true;
+                    return res.status(200).json(staleCache);
+                }
+
+                return res.status(429).json({
+                    success: false,
+                    error: 'Rate limit exceeded, please try again later'
+                });
+            }
+
             return res.status(response.status).json({
                 success: false,
                 error: 'Unable to fetch pricing data'
             });
         }
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            winston.error('Error parsing pricing JSON:', jsonError);
+            return res.status(500).json({
+                success: false,
+                error: 'Invalid JSON response from pricing API'
+            });
+        }
 
         if (!data.success) {
             return res.json({
@@ -891,7 +917,16 @@ app.get('/api/price-history/:marketHashName', async (req, res) => {
             });
         }
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            winston.error('Error parsing price history JSON:', jsonError);
+            return res.status(500).json({
+                success: false,
+                error: 'Invalid JSON response from price history API'
+            });
+        }
 
         if (!data.success) {
             return res.json({
@@ -944,7 +979,16 @@ app.get('/api/recent-sales/:marketHashName', async (req, res) => {
             });
         }
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (jsonError) {
+            winston.error('Error parsing recent sales JSON:', jsonError);
+            return res.status(500).json({
+                success: false,
+                error: 'Invalid JSON response from sales API'
+            });
+        }
 
         if (!Array.isArray(data) || data.length === 0) {
             return res.json({
@@ -1539,25 +1583,80 @@ winston.info('Steam fee calculation endpoints loaded');
 // =====================================================================
 // STEAM INVENTORY ENDPOINTS - MOVED TO INVESTMENT API
 // =====================================================================
-// NOTE: These endpoints have been moved to cs2-investment-api on port 3003
-// They require Better Auth which is only enabled on the Investment API
-/*
-// Get user's CS2 inventory
-app.get('/api/steam/inventory/:steamId?', requireAuth, async (req, res) => {
-    try {
-        // Use authenticated user's Steam ID if not provided in URL
-        const steamId = req.params.steamId || req.user.steam_id;
+// Steam Inventory endpoints (with preview mode support for onboarding)
+// NOTE: Preview mode allows public access without auth for onboarding flow
+// =====================================================================
 
-        // Verify user can only access their own inventory (unless admin)
-        if (req.user.steam_id !== steamId) {
-            return res.status(403).json({
+// Get user's CS2 inventory (supports preview mode)
+app.get('/api/steam/inventory/:steamId?', async (req, res) => {
+    try {
+        const isPreview = req.query.preview === 'true';
+
+        // In preview mode, steamId is required in params (public lookup)
+        const steamId = req.params.steamId;
+
+        if (!steamId) {
+            return res.status(400).json({
                 success: false,
-                error: 'Forbidden',
-                message: 'You can only access your own inventory'
+                error: 'Steam ID required'
+            });
+        }
+
+        // Preview mode is always allowed (public access for onboarding)
+        if (!isPreview) {
+            return res.status(401).json({
+                success: false,
+                error: 'This endpoint requires preview=true parameter'
             });
         }
 
         const result = await steamInventory.getSteamInventory(steamId);
+
+        // Add steamId to response for client convenience
+        if (result.success) {
+            result.steamId = steamId;
+        }
+
+        // In preview mode, enrich items with prices
+        if (isPreview && result.success && result.items && result.items.length > 0) {
+            let totalValue = 0;
+
+            for (const item of result.items) {
+                try {
+                    if (item.market_hash_name) {
+                        const priceData = await postgres.getCachedPrice(item.market_hash_name);
+
+                        // Get the lowest price from available markets
+                        let itemPrice = 0;
+                        if (priceData?.prices) {
+                            const marketPrices = [];
+                            if (priceData.prices.buff163?.price_usd) marketPrices.push(priceData.prices.buff163.price_usd);
+                            if (priceData.prices.csfloat?.price_usd) marketPrices.push(priceData.prices.csfloat.price_usd);
+                            if (priceData.prices.skinport?.price_usd) marketPrices.push(priceData.prices.skinport.price_usd);
+                            if (priceData.prices.marketCsgo?.price_usd) marketPrices.push(priceData.prices.marketCsgo.price_usd);
+
+                            if (marketPrices.length > 0) {
+                                itemPrice = Math.min(...marketPrices);
+                            }
+                        }
+
+                        // Add price to item
+                        item.price = parseFloat(itemPrice.toFixed(2));
+
+                        if (itemPrice > 0) {
+                            totalValue += itemPrice;
+                        }
+                    }
+                } catch (e) {
+                    winston.warn(`Failed to get price for ${item.market_hash_name}: ${e.message}`);
+                    item.price = 0;
+                }
+            }
+
+            // Add total value to response
+            result.total_value = parseFloat(totalValue.toFixed(2));
+        }
+
         res.json(result);
     } catch (error) {
         winston.error('Steam inventory fetch error:', error);
@@ -1570,6 +1669,9 @@ app.get('/api/steam/inventory/:steamId?', requireAuth, async (req, res) => {
 });
 
 // Get inventory value estimate
+// NOTE: This endpoint has been moved to cs2-investment-api
+// Commenting out to avoid requireAuth dependency issues
+/*
 app.get('/api/steam/inventory/:steamId?/value', requireAuth, async (req, res) => {
     try {
         // Use authenticated user's Steam ID if not provided in URL
